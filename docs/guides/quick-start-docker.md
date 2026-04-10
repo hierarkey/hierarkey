@@ -5,7 +5,7 @@ Get a fully working Hierarkey installation running locally in about five minutes
 ## Prerequisites
 
 - Docker and Docker Compose
-- The `hkey` CLI ([download](https://github.com/jaytaph/hierarkey/releases) or build from source)
+- The `hkey` CLI ([download](https://github.com/hierarkey/hierarkey/releases) or build from source)
 
 ---
 
@@ -37,7 +37,7 @@ services:
       retries: 10
 
   hierarkey:
-    image: jaytaph/hierarkey:latest
+    image: hierarkey/hierarkey:latest
     depends_on:
       postgres:
         condition: service_healthy

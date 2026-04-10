@@ -44,6 +44,8 @@ fn generate_dev_keys() {
     let priv_path = "keys/dev/hierarkey-dev-2026.priv.pem";
     let pub_path = "keys/dev/hierarkey-dev-2026.pub.pem";
 
+    std::fs::create_dir_all("keys/dev").expect("build.rs: failed to create keys/dev directory");
+
     if std::path::Path::new(priv_path).exists() && std::path::Path::new(pub_path).exists() {
         return;
     }

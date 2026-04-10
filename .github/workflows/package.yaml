@@ -27,8 +27,8 @@ jobs:
           file: docker/hierarkey/Dockerfile
           push: true
           tags: |
-            ghcr.io/jaytaph/hierarkey:latest
-            ghcr.io/jaytaph/hierarkey:${{ env.VERSION }}
+            ghcr.io/hierarkey/hierarkey:latest
+            ghcr.io/hierarkey/hierarkey:${{ env.VERSION }}
   prepare:
     name: Create release
     runs-on: ubuntu-latest

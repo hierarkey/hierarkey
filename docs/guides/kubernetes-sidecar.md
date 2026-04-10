@@ -19,7 +19,7 @@ Use a sidecar when secrets change frequently or when you want zero-downtime rota
 
 ```
 Pod
-├── sidecar (jaytaph/hierarkey:latest)
+├── sidecar (hierarkey/hierarkey:latest)
 │   └── runs hkey in a loop
 │       └── writes to /run/secrets/ (shared tmpfs volume)
 │
@@ -82,7 +82,7 @@ stringData:
 
 ## 3. The sidecar script
 
-The sidecar uses a simple shell loop. Mount this as a ConfigMap or bake it into a custom image based on `jaytaph/hierarkey:latest`.
+The sidecar uses a simple shell loop. Mount this as a ConfigMap or bake it into a custom image based on `hierarkey/hierarkey:latest`.
 
 ```bash
 #!/bin/sh
@@ -169,7 +169,7 @@ spec:
 
         # ── Hierarkey sidecar ─────────────────────────────────────────
         - name: hierarkey-sidecar
-          image: jaytaph/hierarkey:latest
+          image: hierarkey/hierarkey:latest
           command: ["/scripts/fetch-secrets.sh"]
           volumeMounts:
             - name: secrets-vol

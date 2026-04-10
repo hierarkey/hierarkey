@@ -81,7 +81,7 @@ deploy:
 
     # Install hkey
     - |
-      curl -sSL https://github.com/jaytaph/hierarkey/releases/latest/download/hkey-linux-amd64 \
+      curl -sSL https://github.com/hierarkey/hierarkey/releases/latest/download/hkey-linux-amd64 \
         -o /usr/local/bin/hkey
       chmod +x /usr/local/bin/hkey
 
@@ -166,7 +166,7 @@ deploy-k8s:
   before_script:
     - |
       # Install hkey
-      curl -sSL https://github.com/jaytaph/hierarkey/releases/latest/download/hkey-linux-amd64 \
+      curl -sSL https://github.com/hierarkey/hierarkey/releases/latest/download/hkey-linux-amd64 \
         -o /usr/local/bin/hkey && chmod +x /usr/local/bin/hkey
 
       # Authenticate
@@ -197,7 +197,7 @@ Extract authentication into a reusable YAML anchor:
 ```yaml
 .hierarkey_auth: &hierarkey_auth
   - |
-    curl -sSL https://github.com/jaytaph/hierarkey/releases/latest/download/hkey-linux-amd64 \
+    curl -sSL https://github.com/hierarkey/hierarkey/releases/latest/download/hkey-linux-amd64 \
       -o /usr/local/bin/hkey && chmod +x /usr/local/bin/hkey
     echo "$HIERARKEY_CI_PRIVATE_KEY" > /tmp/ci.pem && chmod 600 /tmp/ci.pem
     export HKEY_TOKEN=$(HKEY_SERVER_URL="$HIERARKEY_SERVER" \
@@ -293,7 +293,7 @@ deploy:
   before_script:
     - apt-get update -qq && apt-get install -y -qq curl jq
     - |
-      curl -sSL https://github.com/jaytaph/hierarkey/releases/latest/download/hkey-linux-amd64 \
+      curl -sSL https://github.com/hierarkey/hierarkey/releases/latest/download/hkey-linux-amd64 \
         -o /usr/local/bin/hkey && chmod +x /usr/local/bin/hkey
 
     - |

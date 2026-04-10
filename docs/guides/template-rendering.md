@@ -162,7 +162,7 @@ FROM alpine:3.19
 
 RUN apk add --no-cache curl
 
-RUN curl -sSL https://github.com/jaytaph/hierarkey/releases/latest/download/hkey-linux-amd64 \
+RUN curl -sSL https://github.com/hierarkey/hierarkey/releases/latest/download/hkey-linux-amd64 \
     -o /usr/local/bin/hkey && chmod +x /usr/local/bin/hkey
 
 COPY config.toml.tpl /etc/myapp/config.toml.tpl

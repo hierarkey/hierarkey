@@ -130,7 +130,7 @@ The application starts with the secrets already in its environment. No code chan
 FROM node:20-alpine
 
 # Install hkey
-RUN curl -sSL https://github.com/jaytaph/hierarkey/releases/latest/download/hkey-linux-amd64 \
+RUN curl -sSL https://github.com/hierarkey/hierarkey/releases/latest/download/hkey-linux-amd64 \
     -o /usr/local/bin/hkey && chmod +x /usr/local/bin/hkey
 
 COPY . /app
