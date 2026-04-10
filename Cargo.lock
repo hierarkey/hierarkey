@@ -148,7 +148,7 @@ dependencies = [
  "base64ct",
  "blake2",
  "cpufeatures 0.2.17",
- "password-hash",
+ "password-hash 0.5.0",
 ]
 
 [[package]]
@@ -1411,7 +1411,7 @@ dependencies = [
  "mockito",
  "nom 8.0.0",
  "parking_lot",
- "password-hash",
+ "password-hash 0.6.1",
  "rand 0.10.0",
  "rand_core 0.10.0",
  "rcgen",
@@ -2262,6 +2262,12 @@ dependencies = [
  "rand_core 0.6.4",
  "subtle",
 ]
+
+[[package]]
+name = "password-hash"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aab41826031698d6ffcd9cff78ef56ef998e39dc7e5067cdfebe373842d4723b"
 
 [[package]]
 name = "pathdiff"
