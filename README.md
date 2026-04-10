@@ -1,5 +1,9 @@
 # Hierarkey — Secret Management Platform
 
+[![CI](https://github.com/hierarkey/hierarkey/actions/workflows/ci.yaml/badge.svg)](https://github.com/hierarkey/hierarkey/actions/workflows/ci.yaml)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![CLA](https://github.com/hierarkey/hierarkey/actions/workflows/cla.yaml/badge.svg)](https://github.com/hierarkey/hierarkey/actions/workflows/cla.yaml)
+
 ```
  _   _ _____ ___________  ___  ______ _   __ _______   __
 | | | |_   _|  ___| ___ \/ _ \ | ___ \ | / /|  ___\ \ / /
