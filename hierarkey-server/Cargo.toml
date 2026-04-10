@@ -27,7 +27,7 @@ preview = []
 
 [dev-dependencies]
 mockito = "1"
-rcgen = "0.13"
+rcgen = "0.14"
 
 [dependencies]
 aes-gcm = { version = "0.10", features = ["aes", "zeroize"] }
