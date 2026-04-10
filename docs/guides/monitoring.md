@@ -28,7 +28,7 @@ If any check fails, `/readyz` returns HTTP 503 with a JSON body indicating which
 ```yaml
 containers:
   - name: hierarkey
-    image: jaytaph/hierarkey:latest
+    image: hierarkey/hierarkey:latest
     livenessProbe:
       httpGet:
         path: /healthz

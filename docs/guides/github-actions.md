@@ -77,7 +77,7 @@ jobs:
 
       - name: Install hkey
         run: |
-          curl -sSL https://github.com/jaytaph/hierarkey/releases/latest/download/hkey-linux-amd64 \
+          curl -sSL https://github.com/hierarkey/hierarkey/releases/latest/download/hkey-linux-amd64 \
             -o /usr/local/bin/hkey
           chmod +x /usr/local/bin/hkey
 
@@ -250,7 +250,7 @@ jobs:
 
       - name: Install hkey
         run: |
-          curl -sSL https://github.com/jaytaph/hierarkey/releases/latest/download/hkey-linux-amd64 \
+          curl -sSL https://github.com/hierarkey/hierarkey/releases/latest/download/hkey-linux-amd64 \
             -o /usr/local/bin/hkey
           chmod +x /usr/local/bin/hkey
 
