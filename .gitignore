@@ -1,0 +1,16 @@
+hierarkey-config.toml
+hierarkey-config.test.toml
+data/*
+target/
+**/*.swp
+**/*.swo
+.DS_Store
+.hkey-demo-keys
+site/*
+html/
+.hkey-populate-keys
+# Dev signing keys — generated locally at build time, must not be committed
+hierarkey-server/keys/dev/
+*.lic
+# Claude Code local settings and worktrees
+.claude/

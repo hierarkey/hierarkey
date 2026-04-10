@@ -1,0 +1,6 @@
+k6: k6 v1.6.1 (commit/2ac2bb560e, go1.25.7, linux/amd64)
+git: git version 2.43.0
+bash: 5.2.21(1)-release
+psql: psql (PostgreSQL) 16.13 (Ubuntu 16.13-0ubuntu0.24.04.1)
+docker: Docker version 28.2.2, build 28.2.2-0ubuntu1~24.04.1
+kubectl: clientVersion:   buildDate: "2025-08-13T14:23:59Z"   compiler: gc   gitCommit: 74cdb4273add43f53ddcad2de8ea9fd93c810dc4   gitTreeState: clean   gitVersion: v1.33.4   goVersion: go1.24.5   major: "1"   minor: "33"   platform: linux/amd64 kustomizeVersion: v5.6.0  

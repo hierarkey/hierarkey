@@ -1,0 +1,10 @@
+Benchmark script: /home/jthijssen/code/hierarkey/hierarkey/benchmark/benchmark.js
+Label: baseline
+
+This file is intended for human notes about:
+- scenario definitions
+- thresholds
+- expected namespace
+- seed count
+- auth mode
+Update this file manually or generate it from your benchmark config if desired.

@@ -1,0 +1,12 @@
+A  benchmark/README.md
+A  benchmark/benchmark.js
+D  reset_db.sh
+R  hkey-demo-flow.sh -> scripts/hkey-demo-flow.sh
+RM hkey-populate.sh -> scripts/hkey-populate.sh
+R  hkey-test-suite.sh -> scripts/hkey-test-suite.sh
+R  hkey_bash_funcs.sh -> scripts/hkey_bash_funcs.sh
+AM scripts/login.sh
+AM scripts/reset_db.sh
+AM scripts/run-benchmark.sh
+D  testsuite.sh
+?? benchmark/results/

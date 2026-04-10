@@ -1,0 +1,25 @@
+services:
+  postgres:
+    build: ./docker/postgres
+    container_name: hierarkey-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hierarkey
+      POSTGRES_PASSWORD: hierarkey
+      POSTGRES_DB: hierarkey
+      HIERARKEY_POSTGRES_TLS: ${HIERARKEY_POSTGRES_TLS:-0}
+    ports:
+      - "5432:5432"
+    volumes:
+      - hierarkey_pgdata:/var/lib/postgresql/data
+      - hierarkey_pgcerts:/var/lib/postgresql/certs
+      - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hierarkey -d hierarkey"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  hierarkey_pgdata:
+  hierarkey_pgcerts:

@@ -1,0 +1,387 @@
+diff --git a/hierarkey-server/src/manager/rbac.rs b/hierarkey-server/src/manager/rbac.rs
+index c737a20..2a2bd14 100644
+--- a/hierarkey-server/src/manager/rbac.rs
++++ b/hierarkey-server/src/manager/rbac.rs
+@@ -22,6 +22,7 @@ use std::sync::Arc;
+ use tracing::trace;
+ use uuid::Uuid;
+ 
++pub mod cache;
+ pub mod role;
+ pub mod rule;
+ 
+@@ -1140,11 +1141,15 @@ impl RbacStore for InMemoryRbacStore {
+ 
+ pub struct RbacManager {
+     store: Arc<dyn RbacStore + Send + Sync>,
++    cache: Arc<cache::RbacCache>,
+ }
+ 
+ impl RbacManager {
+     pub fn new(store: Arc<dyn RbacStore + Send + Sync>) -> Self {
+-        RbacManager { store }
++        RbacManager {
++            store,
++            cache: cache::RbacCache::new(cache::DEFAULT_TTL, cache::DEFAULT_MAX_SIZE),
++        }
+     }
+ 
+     pub async fn get_bindings_for_account(&self, account_id: AccountId) -> CkResult<AccountBindings> {
+@@ -1152,7 +1157,14 @@ impl RbacManager {
+     }
+ 
+     pub async fn is_allowed(&self, request: RbacAllowedRequest) -> CkResult<RbacAllowedResponse> {
+-        let rules: Vec<Rule> = self.store.get_rules_for_account(request.subject).await?;
++        let rules: Vec<Rule> = match self.cache.get(request.subject) {
++            Some(cached) => cached,
++            None => {
++                let rules = self.store.get_rules_for_account(request.subject).await?;
++                self.cache.insert(request.subject, rules.clone());
++                rules
++            }
++        };
+ 
+         trace!(
+             account_id = %request.subject,
+@@ -1235,7 +1247,14 @@ impl RbacManager {
+     }
+ 
+     pub async fn explain(&self, request: RbacAllowedRequest, verbose: bool) -> CkResult<RbacExplainResponse> {
+-        let rules = self.store.get_rules_for_account(request.subject).await?;
++        let rules = match self.cache.get(request.subject) {
++            Some(cached) => cached,
++            None => {
++                let rules = self.store.get_rules_for_account(request.subject).await?;
++                self.cache.insert(request.subject, rules.clone());
++                rules
++            }
++        };
+ 
+         let mut near_misses = Vec::new();
+         let mut matching: Vec<(&Rule, u32)> = vec![];
+@@ -1335,7 +1354,9 @@ impl RbacManager {
+ 
+     pub async fn role_delete(&self, ctx: &CallContext, role_id: RoleId) -> CkResult<()> {
+         let actor = ctx.actor.require_account_id().copied()?;
+-        self.store.role_delete(actor, role_id).await
++        let result = self.store.role_delete(actor, role_id).await;
++        if result.is_ok() { self.cache.invalidate_all(); }
++        result
+     }
+ 
+     pub async fn role_get(&self, role_id: RoleId) -> CkResult<RoleWithRules> {
+@@ -1352,12 +1373,16 @@ impl RbacManager {
+ 
+     pub async fn role_add_rule(&self, ctx: &CallContext, role_id: RoleId, rule_id: RuleId) -> CkResult<()> {
+         let actor = ctx.actor.require_account_id().copied()?;
+-        self.store.add_rule_to_role(actor, role_id, rule_id).await
++        let result = self.store.add_rule_to_role(actor, role_id, rule_id).await;
++        if result.is_ok() { self.cache.invalidate_all(); }
++        result
+     }
+ 
+     pub async fn role_remove_rule(&self, ctx: &CallContext, role_id: RoleId, rule_id: RuleId) -> CkResult<()> {
+         let actor = ctx.actor.require_account_id().copied()?;
+-        self.store.delete_rule_from_role(actor, role_id, rule_id).await
++        let result = self.store.delete_rule_from_role(actor, role_id, rule_id).await;
++        if result.is_ok() { self.cache.invalidate_all(); }
++        result
+     }
+ 
+     // ----------------------------------------------------------------------------------------
+@@ -1369,7 +1394,9 @@ impl RbacManager {
+ 
+     pub async fn rule_delete(&self, ctx: &CallContext, rule_id: RuleId) -> CkResult<()> {
+         let actor = ctx.actor.require_account_id().copied()?;
+-        self.store.rule_delete(actor, rule_id).await
++        let result = self.store.rule_delete(actor, rule_id).await;
++        if result.is_ok() { self.cache.invalidate_all(); }
++        result
+     }
+ 
+     pub async fn rule_get(&self, rule_id: RuleId) -> CkResult<Rule> {
+@@ -1384,21 +1411,29 @@ impl RbacManager {
+ 
+     pub async fn bind_rule_to_user(&self, ctx: &CallContext, rule_id: RuleId, account_id: AccountId) -> CkResult<()> {
+         let actor = ctx.actor.require_account_id().copied()?;
+-        self.store.bind_rule_to_user(actor, rule_id, account_id).await
++        let result = self.store.bind_rule_to_user(actor, rule_id, account_id).await;
++        if result.is_ok() { self.cache.invalidate(account_id); }
++        result
+     }
+ 
+     pub async fn bind_rule_to_label(&self, ctx: &CallContext, rule_id: RuleId, key: &str, value: &str) -> CkResult<()> {
+         let actor = ctx.actor.require_account_id().copied()?;
+-        self.store.bind_rule_to_label(actor, rule_id, key, value).await
++        let result = self.store.bind_rule_to_label(actor, rule_id, key, value).await;
++        if result.is_ok() { self.cache.invalidate_all(); }
++        result
+     }
+ 
+     pub async fn bind_role_to_user(&self, ctx: &CallContext, role_id: RoleId, account_id: AccountId) -> CkResult<()> {
+         let actor = ctx.actor.require_account_id().copied()?;
+-        self.store.bind_role_to_user(actor, role_id, account_id).await
++        let result = self.store.bind_role_to_user(actor, role_id, account_id).await;
++        if result.is_ok() { self.cache.invalidate(account_id); }
++        result
+     }
+ 
+     pub async fn bind_role_to_label(&self, ctx: &CallContext, role_id: RoleId, key: &str, value: &str) -> CkResult<()> {
+         let actor = ctx.actor.require_account_id().copied()?;
+-        self.store.bind_role_to_label(actor, role_id, key, value).await
++        let result = self.store.bind_role_to_label(actor, role_id, key, value).await;
++        if result.is_ok() { self.cache.invalidate_all(); }
++        result
+     }
+ }
+diff --git a/hierarkey-server/src/manager/rbac/cache.rs b/hierarkey-server/src/manager/rbac/cache.rs
+new file mode 100644
+index 0000000..5bbaa51
+--- /dev/null
++++ b/hierarkey-server/src/manager/rbac/cache.rs
+@@ -0,0 +1,223 @@
++use crate::manager::account::AccountId;
++use crate::manager::rbac::rule::Rule;
++use parking_lot::Mutex;
++use std::collections::HashMap;
++use std::sync::Arc;
++use std::time::{Duration, Instant};
++use tracing::{debug, trace};
++
++/// Default time-to-live for a cached rule set.
++pub const DEFAULT_TTL: Duration = Duration::from_secs(60);
++
++/// Default maximum number of accounts to keep in the cache.
++pub const DEFAULT_MAX_SIZE: usize = 1000;
++
++/// Per-account RBAC rule cache.
++///
++/// Caches the full set of rules that apply to an account (the result of
++/// `get_rules_for_account`) so that `is_allowed` / `explain` don't need a
++/// database round-trip on every request.
++///
++/// Invalidation strategy:
++///  - Account-specific operations (bind/unbind rule or role to a user) ->
++///    `invalidate(account_id)` — only that account's entry is dropped.
++///  - Role-wide or rule-wide mutations (add/remove rule from role, delete role
++///    or rule) -> `invalidate_all()` — the entire cache is cleared, because we
++///    don't track which accounts are bound to which role.
++///  - A TTL acts as a safety net regardless.
++pub struct RbacCache {
++    entries:  Mutex<HashMap<AccountId, RbacCacheEntry>>,
++    ttl:      Duration,
++    max_size: usize,
++}
++
++struct RbacCacheEntry {
++    rules:       Vec<Rule>,
++    inserted_at: Instant,
++}
++
++impl RbacCacheEntry {
++    fn is_expired(&self, ttl: Duration) -> bool {
++        Instant::now().duration_since(self.inserted_at) > ttl
++    }
++}
++
++impl RbacCache {
++    pub fn new(ttl: Duration, max_size: usize) -> Arc<Self> {
++        debug!("Creating RBAC cache with TTL {:?} and max size {}", ttl, max_size);
++        Arc::new(Self {
++            entries: Mutex::new(HashMap::new()),
++            ttl,
++            max_size,
++        })
++    }
++
++    /// Return the cached rules for `account_id`, or `None` on miss/expiry.
++    pub fn get(&self, account_id: AccountId) -> Option<Vec<Rule>> {
++        let mut entries = self.entries.lock();
++
++        if let Some(entry) = entries.get(&account_id) {
++            if entry.is_expired(self.ttl) {
++                trace!("RBAC cache entry expired for account '{}'", account_id);
++                entries.remove(&account_id);
++                return None;
++            }
++            trace!("RBAC cache hit for account '{}'", account_id);
++            return Some(entry.rules.clone());
++        }
++
++        trace!("RBAC cache miss for account '{}'", account_id);
++        None
++    }
++
++    /// Store `rules` for `account_id`. Evicts the oldest entry if at capacity.
++    pub fn insert(&self, account_id: AccountId, rules: Vec<Rule>) {
++        let mut entries = self.entries.lock();
++
++        // If at capacity and this is a new key, evict the oldest entry.
++        if entries.len() >= self.max_size && !entries.contains_key(&account_id) {
++            if let Some((&oldest_id, _)) = entries.iter().min_by_key(|(_, e)| e.inserted_at) {
++                entries.remove(&oldest_id);
++                trace!("RBAC cache evicted oldest entry to make room");
++            }
++        }
++
++        trace!("RBAC cache insert for account '{}' ({} rules)", account_id, rules.len());
++        entries.insert(account_id, RbacCacheEntry { rules, inserted_at: Instant::now() });
++    }
++
++    /// Invalidate a single account's cached rules (e.g. after a direct bind/unbind).
++    pub fn invalidate(&self, account_id: AccountId) {
++        if self.entries.lock().remove(&account_id).is_some() {
++            debug!("RBAC cache invalidated for account '{}'", account_id);
++        }
++    }
++
++    /// Invalidate the entire cache (e.g. after a role or rule mutation).
++    pub fn invalidate_all(&self) {
++        let mut entries = self.entries.lock();
++        let count = entries.len();
++        entries.clear();
++        if count > 0 {
++            debug!("RBAC cache cleared ({} entries evicted)", count);
++        }
++    }
++
++    // ------ test helpers -------------------------------------------------------
++
++    #[cfg(test)]
++    pub fn size(&self) -> usize {
++        self.entries.lock().len()
++    }
++
++    #[cfg(test)]
++    pub fn contains(&self, account_id: AccountId) -> bool {
++        let entries = self.entries.lock();
++        entries.get(&account_id).is_some_and(|e| !e.is_expired(self.ttl))
++    }
++
++    #[cfg(test)]
++    pub fn ttl(&self) -> Duration {
++        self.ttl
++    }
++
++    #[cfg(test)]
++    pub fn max_size(&self) -> usize {
++        self.max_size
++    }
++}
++
++// ---------------------------------------------------------------------------
++// Tests
++// ---------------------------------------------------------------------------
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::manager::account::AccountId;
++
++    fn make_cache(ttl: Duration, max_size: usize) -> Arc<RbacCache> {
++        RbacCache::new(ttl, max_size)
++    }
++
++    #[test]
++    fn miss_on_empty_cache() {
++        let cache = make_cache(DEFAULT_TTL, DEFAULT_MAX_SIZE);
++        assert!(cache.get(AccountId::new()).is_none());
++    }
++
++    #[test]
++    fn insert_and_hit() {
++        let cache = make_cache(DEFAULT_TTL, DEFAULT_MAX_SIZE);
++        let id = AccountId::new();
++        cache.insert(id, vec![]);
++        assert!(cache.get(id).is_some());
++    }
++
++    #[test]
++    fn invalidate_removes_entry() {
++        let cache = make_cache(DEFAULT_TTL, DEFAULT_MAX_SIZE);
++        let id = AccountId::new();
++        cache.insert(id, vec![]);
++        assert!(cache.contains(id));
++        cache.invalidate(id);
++        assert!(!cache.contains(id));
++        assert!(cache.get(id).is_none());
++    }
++
++    #[test]
++    fn invalidate_all_clears_cache() {
++        let cache = make_cache(DEFAULT_TTL, DEFAULT_MAX_SIZE);
++        let id1 = AccountId::new();
++        let id2 = AccountId::new();
++        cache.insert(id1, vec![]);
++        cache.insert(id2, vec![]);
++        assert_eq!(cache.size(), 2);
++        cache.invalidate_all();
++        assert_eq!(cache.size(), 0);
++    }
++
++    #[test]
++    fn ttl_expiry_returns_none() {
++        let cache = make_cache(Duration::from_millis(50), DEFAULT_MAX_SIZE);
++        let id = AccountId::new();
++        cache.insert(id, vec![]);
++        assert!(cache.contains(id));
++        std::thread::sleep(Duration::from_millis(100));
++        assert!(cache.get(id).is_none());
++        assert!(!cache.contains(id));
++    }
++
++    #[test]
++    fn evicts_oldest_when_full() {
++        let cache = make_cache(DEFAULT_TTL, 2);
++        let id1 = AccountId::new();
++        let id2 = AccountId::new();
++        let id3 = AccountId::new();
++
++        cache.insert(id1, vec![]);
++        std::thread::sleep(Duration::from_millis(5));
++        cache.insert(id2, vec![]);
++        // id1 is oldest — should be evicted when id3 is inserted
++        cache.insert(id3, vec![]);
++
++        assert_eq!(cache.size(), 2);
++        assert!(!cache.contains(id1));
++        assert!(cache.contains(id2));
++        assert!(cache.contains(id3));
++    }
++
++    #[test]
++    fn reinserting_same_id_does_not_evict() {
++        let cache = make_cache(DEFAULT_TTL, 2);
++        let id1 = AccountId::new();
++        let id2 = AccountId::new();
++        cache.insert(id1, vec![]);
++        cache.insert(id2, vec![]);
++        // Re-inserting id1 (already in cache) should not trigger eviction
++        cache.insert(id1, vec![]);
++        assert_eq!(cache.size(), 2);
++        assert!(cache.contains(id1));
++        assert!(cache.contains(id2));
++    }
++}
+diff --git a/hierarkey-server/src/service/rbac.rs b/hierarkey-server/src/service/rbac.rs
+index 1afd919..a83d87f 100644
+--- a/hierarkey-server/src/service/rbac.rs
++++ b/hierarkey-server/src/service/rbac.rs
+@@ -23,16 +23,11 @@ fn rbac_platform_resource() -> RbacResource {
+ 
+ pub struct RbacService {
+     rbac_manager: Arc<RbacManager>,
+-    // We should have some kind of LRU cache to make sure we don't hit the DB for every request
+-    // rbac_cache: Arc<crate::service::kek::cache::KekCache>,
+ }
+ 
+ impl RbacService {
+     pub fn new(rbac_manager: Arc<RbacManager>) -> Self {
+-        Self {
+-            rbac_manager,
+-            // rbac_cache,
+-        }
++        Self { rbac_manager }
+     }
+ 
+     pub async fn resolve_short_rule_id(&self, _ctx: &CallContext, prefix_id: &str) -> CkResult<ResolveOne<RuleId>> {

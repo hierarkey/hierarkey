@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: hierarkey
+      POSTGRES_PASSWORD: hierarkey
+      POSTGRES_DB: postgres
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "--username", "hierarkey", "--dbname", "postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 15

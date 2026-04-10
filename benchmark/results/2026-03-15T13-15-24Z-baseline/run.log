@@ -1,0 +1,1429 @@
+
+         /\      Grafana   /‾‾/  
+    /\  /  \     |\  __   /  /   
+   /  \/    \    | |/ /  /   ‾‾\ 
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/ 
+
+
+     execution: local
+        script: /home/jthijssen/code/hierarkey/hierarkey/benchmark/benchmark.js
+        output: json (/home/jthijssen/code/hierarkey/hierarkey/benchmark/results/2026-03-15T13-15-24Z-baseline/results.json)
+
+     scenarios: (100.00%) 5 scenarios, 20 max VUs, 3m40s max duration (incl. graceful stop):
+              * auth_only: 10 looping VUs for 30s (exec: authScenario, gracefulStop: 30s)
+              * secret_write: 10 looping VUs for 30s (exec: writeScenario, startTime: 35s, gracefulStop: 30s)
+              * secret_read: 10 looping VUs for 30s (exec: readScenario, startTime: 1m10s, gracefulStop: 30s)
+              * secret_search: 10 looping VUs for 30s (exec: searchScenario, startTime: 1m45s, gracefulStop: 30s)
+              * mixed: Up to 10 looping VUs for 50s over 3 stages (gracefulRampDown: 30s, exec: mixedScenario, startTime: 2m20s, gracefulStop: 30s)
+
+
+Run             [ 100% ] setup()
+auth_only       [   0% ]
+secret_write    [   0% ]
+secret_read     [   0% ]
+secret_search   [   0% ]
+mixed           [   0% ]
+time="2026-03-15T14:15:26+01:00" level=info msg="Setup complete. Seeded 100 secrets in /bench." source=console
+
+running (0m02.0s), 10/20 VUs, 9 complete and 0 interrupted iterations
+auth_only       [   1% ] 10 VUs   00.4s/30s
+secret_write  • [   0% ] waiting  34.6s
+secret_read   • [   0% ] waiting  1m09.6s
+secret_search • [   0% ] waiting  1m44.6s
+mixed         • [   0% ] waiting  2m19.6s
+
+running (0m03.0s), 10/20 VUs, 30 complete and 0 interrupted iterations
+auth_only       [   5% ] 10 VUs   01.4s/30s
+secret_write  • [   0% ] waiting  33.6s
+secret_read   • [   0% ] waiting  1m08.6s
+secret_search • [   0% ] waiting  1m43.6s
+mixed         • [   0% ] waiting  2m18.6s
+
+running (0m04.0s), 10/20 VUs, 66 complete and 0 interrupted iterations
+auth_only       [   8% ] 10 VUs   02.4s/30s
+secret_write  • [   0% ] waiting  32.6s
+secret_read   • [   0% ] waiting  1m07.6s
+secret_search • [   0% ] waiting  1m42.6s
+mixed         • [   0% ] waiting  2m17.6s
+
+running (0m05.0s), 10/20 VUs, 107 complete and 0 interrupted iterations
+auth_only       [  11% ] 10 VUs   03.4s/30s
+secret_write  • [   0% ] waiting  31.6s
+secret_read   • [   0% ] waiting  1m06.6s
+secret_search • [   0% ] waiting  1m41.6s
+mixed         • [   0% ] waiting  2m16.6s
+
+running (0m06.0s), 10/20 VUs, 149 complete and 0 interrupted iterations
+auth_only       [  15% ] 10 VUs   04.4s/30s
+secret_write  • [   0% ] waiting  30.6s
+secret_read   • [   0% ] waiting  1m05.6s
+secret_search • [   0% ] waiting  1m40.6s
+mixed         • [   0% ] waiting  2m15.6s
+
+running (0m07.0s), 10/20 VUs, 191 complete and 0 interrupted iterations
+auth_only       [  18% ] 10 VUs   05.4s/30s
+secret_write  • [   0% ] waiting  29.6s
+secret_read   • [   0% ] waiting  1m04.6s
+secret_search • [   0% ] waiting  1m39.6s
+mixed         • [   0% ] waiting  2m14.6s
+
+running (0m08.0s), 10/20 VUs, 235 complete and 0 interrupted iterations
+auth_only       [  21% ] 10 VUs   06.4s/30s
+secret_write  • [   0% ] waiting  28.6s
+secret_read   • [   0% ] waiting  1m03.6s
+secret_search • [   0% ] waiting  1m38.6s
+mixed         • [   0% ] waiting  2m13.6s
+
+running (0m09.0s), 10/20 VUs, 276 complete and 0 interrupted iterations
+auth_only       [  25% ] 10 VUs   07.4s/30s
+secret_write  • [   0% ] waiting  27.6s
+secret_read   • [   0% ] waiting  1m02.6s
+secret_search • [   0% ] waiting  1m37.6s
+mixed         • [   0% ] waiting  2m12.6s
+
+running (0m10.0s), 10/20 VUs, 313 complete and 0 interrupted iterations
+auth_only       [  28% ] 10 VUs   08.4s/30s
+secret_write  • [   0% ] waiting  26.6s
+secret_read   • [   0% ] waiting  1m01.6s
+secret_search • [   0% ] waiting  1m36.6s
+mixed         • [   0% ] waiting  2m11.6s
+
+running (0m11.0s), 10/20 VUs, 355 complete and 0 interrupted iterations
+auth_only       [  31% ] 10 VUs   09.4s/30s
+secret_write  • [   0% ] waiting  25.6s
+secret_read   • [   0% ] waiting  1m00.6s
+secret_search • [   0% ] waiting  1m35.6s
+mixed         • [   0% ] waiting  2m10.6s
+
+running (0m12.0s), 10/20 VUs, 396 complete and 0 interrupted iterations
+auth_only       [  35% ] 10 VUs   10.4s/30s
+secret_write  • [   0% ] waiting  24.6s
+secret_read   • [   0% ] waiting  0m59.6s
+secret_search • [   0% ] waiting  1m34.6s
+mixed         • [   0% ] waiting  2m09.6s
+
+running (0m13.0s), 10/20 VUs, 435 complete and 0 interrupted iterations
+auth_only       [  38% ] 10 VUs   11.4s/30s
+secret_write  • [   0% ] waiting  23.6s
+secret_read   • [   0% ] waiting  0m58.6s
+secret_search • [   0% ] waiting  1m33.6s
+mixed         • [   0% ] waiting  2m08.6s
+
+running (0m14.0s), 10/20 VUs, 480 complete and 0 interrupted iterations
+auth_only       [  41% ] 10 VUs   12.4s/30s
+secret_write  • [   0% ] waiting  22.6s
+secret_read   • [   0% ] waiting  0m57.6s
+secret_search • [   0% ] waiting  1m32.6s
+mixed         • [   0% ] waiting  2m07.6s
+
+running (0m15.0s), 10/20 VUs, 520 complete and 0 interrupted iterations
+auth_only       [  45% ] 10 VUs   13.4s/30s
+secret_write  • [   0% ] waiting  21.6s
+secret_read   • [   0% ] waiting  0m56.6s
+secret_search • [   0% ] waiting  1m31.6s
+mixed         • [   0% ] waiting  2m06.6s
+
+running (0m16.0s), 10/20 VUs, 562 complete and 0 interrupted iterations
+auth_only       [  48% ] 10 VUs   14.4s/30s
+secret_write  • [   0% ] waiting  20.6s
+secret_read   • [   0% ] waiting  0m55.6s
+secret_search • [   0% ] waiting  1m30.6s
+mixed         • [   0% ] waiting  2m05.6s
+
+running (0m17.0s), 10/20 VUs, 607 complete and 0 interrupted iterations
+auth_only       [  51% ] 10 VUs   15.4s/30s
+secret_write  • [   0% ] waiting  19.6s
+secret_read   • [   0% ] waiting  0m54.6s
+secret_search • [   0% ] waiting  1m29.6s
+mixed         • [   0% ] waiting  2m04.6s
+
+running (0m18.0s), 10/20 VUs, 648 complete and 0 interrupted iterations
+auth_only       [  55% ] 10 VUs   16.4s/30s
+secret_write  • [   0% ] waiting  18.6s
+secret_read   • [   0% ] waiting  0m53.6s
+secret_search • [   0% ] waiting  1m28.6s
+mixed         • [   0% ] waiting  2m03.6s
+
+running (0m19.0s), 10/20 VUs, 688 complete and 0 interrupted iterations
+auth_only       [  58% ] 10 VUs   17.4s/30s
+secret_write  • [   0% ] waiting  17.6s
+secret_read   • [   0% ] waiting  0m52.6s
+secret_search • [   0% ] waiting  1m27.6s
+mixed         • [   0% ] waiting  2m02.6s
+
+running (0m20.0s), 10/20 VUs, 728 complete and 0 interrupted iterations
+auth_only       [  61% ] 10 VUs   18.4s/30s
+secret_write  • [   0% ] waiting  16.6s
+secret_read   • [   0% ] waiting  0m51.6s
+secret_search • [   0% ] waiting  1m26.6s
+mixed         • [   0% ] waiting  2m01.6s
+
+running (0m21.0s), 10/20 VUs, 767 complete and 0 interrupted iterations
+auth_only       [  65% ] 10 VUs   19.4s/30s
+secret_write  • [   0% ] waiting  15.6s
+secret_read   • [   0% ] waiting  0m50.6s
+secret_search • [   0% ] waiting  1m25.6s
+mixed         • [   0% ] waiting  2m00.6s
+
+running (0m22.0s), 10/20 VUs, 809 complete and 0 interrupted iterations
+auth_only       [  68% ] 10 VUs   20.4s/30s
+secret_write  • [   0% ] waiting  14.6s
+secret_read   • [   0% ] waiting  0m49.6s
+secret_search • [   0% ] waiting  1m24.6s
+mixed         • [   0% ] waiting  1m59.6s
+
+running (0m23.0s), 10/20 VUs, 850 complete and 0 interrupted iterations
+auth_only       [  71% ] 10 VUs   21.4s/30s
+secret_write  • [   0% ] waiting  13.6s
+secret_read   • [   0% ] waiting  0m48.6s
+secret_search • [   0% ] waiting  1m23.6s
+mixed         • [   0% ] waiting  1m58.6s
+
+running (0m24.0s), 10/20 VUs, 895 complete and 0 interrupted iterations
+auth_only       [  75% ] 10 VUs   22.4s/30s
+secret_write  • [   0% ] waiting  12.6s
+secret_read   • [   0% ] waiting  0m47.6s
+secret_search • [   0% ] waiting  1m22.6s
+mixed         • [   0% ] waiting  1m57.6s
+
+running (0m25.0s), 10/20 VUs, 938 complete and 0 interrupted iterations
+auth_only       [  78% ] 10 VUs   23.4s/30s
+secret_write  • [   0% ] waiting  11.6s
+secret_read   • [   0% ] waiting  0m46.6s
+secret_search • [   0% ] waiting  1m21.6s
+mixed         • [   0% ] waiting  1m56.6s
+
+running (0m26.0s), 10/20 VUs, 980 complete and 0 interrupted iterations
+auth_only       [  81% ] 10 VUs   24.4s/30s
+secret_write  • [   0% ] waiting  10.6s
+secret_read   • [   0% ] waiting  0m45.6s
+secret_search • [   0% ] waiting  1m20.6s
+mixed         • [   0% ] waiting  1m55.6s
+
+running (0m27.0s), 10/20 VUs, 1023 complete and 0 interrupted iterations
+auth_only       [  85% ] 10 VUs   25.4s/30s
+secret_write  • [   0% ] waiting  09.6s
+secret_read   • [   0% ] waiting  0m44.6s
+secret_search • [   0% ] waiting  1m19.6s
+mixed         • [   0% ] waiting  1m54.6s
+
+running (0m28.0s), 10/20 VUs, 1065 complete and 0 interrupted iterations
+auth_only       [  88% ] 10 VUs   26.4s/30s
+secret_write  • [   0% ] waiting  08.6s
+secret_read   • [   0% ] waiting  0m43.6s
+secret_search • [   0% ] waiting  1m18.6s
+mixed         • [   0% ] waiting  1m53.6s
+
+running (0m29.0s), 10/20 VUs, 1108 complete and 0 interrupted iterations
+auth_only       [  91% ] 10 VUs   27.4s/30s
+secret_write  • [   0% ] waiting  07.6s
+secret_read   • [   0% ] waiting  0m42.6s
+secret_search • [   0% ] waiting  1m17.6s
+mixed         • [   0% ] waiting  1m52.6s
+
+running (0m30.0s), 10/20 VUs, 1148 complete and 0 interrupted iterations
+auth_only       [  95% ] 10 VUs   28.4s/30s
+secret_write  • [   0% ] waiting  06.6s
+secret_read   • [   0% ] waiting  0m41.6s
+secret_search • [   0% ] waiting  1m16.6s
+mixed         • [   0% ] waiting  1m51.6s
+
+running (0m31.0s), 10/20 VUs, 1192 complete and 0 interrupted iterations
+auth_only       [  98% ] 10 VUs   29.4s/30s
+secret_write  • [   0% ] waiting  05.6s
+secret_read   • [   0% ] waiting  0m40.6s
+secret_search • [   0% ] waiting  1m15.6s
+mixed         • [   0% ] waiting  1m50.6s
+
+running (0m32.0s), 00/20 VUs, 1225 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  • [   0% ] waiting  04.6s
+secret_read   • [   0% ] waiting  0m39.6s
+secret_search • [   0% ] waiting  1m14.6s
+mixed         • [   0% ] waiting  1m49.6s
+
+running (0m33.0s), 00/20 VUs, 1225 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  • [   0% ] waiting  03.6s
+secret_read   • [   0% ] waiting  0m38.6s
+secret_search • [   0% ] waiting  1m13.6s
+mixed         • [   0% ] waiting  1m48.6s
+
+running (0m34.0s), 00/20 VUs, 1225 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  • [   0% ] waiting  02.6s
+secret_read   • [   0% ] waiting  0m37.6s
+secret_search • [   0% ] waiting  1m12.6s
+mixed         • [   0% ] waiting  1m47.6s
+
+running (0m35.0s), 00/20 VUs, 1225 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  • [   0% ] waiting  01.6s
+secret_read   • [   0% ] waiting  0m36.6s
+secret_search • [   0% ] waiting  1m11.6s
+mixed         • [   0% ] waiting  1m46.6s
+
+running (0m36.0s), 00/20 VUs, 1225 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  • [   0% ] waiting  00.6s
+secret_read   • [   0% ] waiting  0m35.6s
+secret_search • [   0% ] waiting  1m10.6s
+mixed         • [   0% ] waiting  1m45.6s
+
+running (0m37.0s), 10/20 VUs, 1275 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [   1% ] 10 VUs   00.4s/30s
+secret_read   • [   0% ] waiting  0m34.6s
+secret_search • [   0% ] waiting  1m09.6s
+mixed         • [   0% ] waiting  1m44.6s
+
+running (0m38.0s), 10/20 VUs, 1494 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [   5% ] 10 VUs   01.4s/30s
+secret_read   • [   0% ] waiting  0m33.6s
+secret_search • [   0% ] waiting  1m08.6s
+mixed         • [   0% ] waiting  1m43.6s
+
+running (0m39.0s), 10/20 VUs, 1715 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [   8% ] 10 VUs   02.4s/30s
+secret_read   • [   0% ] waiting  0m32.6s
+secret_search • [   0% ] waiting  1m07.6s
+mixed         • [   0% ] waiting  1m42.6s
+
+running (0m40.0s), 10/20 VUs, 1931 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  11% ] 10 VUs   03.4s/30s
+secret_read   • [   0% ] waiting  0m31.6s
+secret_search • [   0% ] waiting  1m06.6s
+mixed         • [   0% ] waiting  1m41.6s
+
+running (0m41.0s), 10/20 VUs, 2145 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  15% ] 10 VUs   04.4s/30s
+secret_read   • [   0% ] waiting  0m30.6s
+secret_search • [   0% ] waiting  1m05.6s
+mixed         • [   0% ] waiting  1m40.6s
+
+running (0m42.0s), 10/20 VUs, 2359 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  18% ] 10 VUs   05.4s/30s
+secret_read   • [   0% ] waiting  0m29.6s
+secret_search • [   0% ] waiting  1m04.6s
+mixed         • [   0% ] waiting  1m39.6s
+
+running (0m43.0s), 10/20 VUs, 2579 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  21% ] 10 VUs   06.4s/30s
+secret_read   • [   0% ] waiting  0m28.6s
+secret_search • [   0% ] waiting  1m03.6s
+mixed         • [   0% ] waiting  1m38.6s
+
+running (0m44.0s), 10/20 VUs, 2801 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  25% ] 10 VUs   07.4s/30s
+secret_read   • [   0% ] waiting  0m27.6s
+secret_search • [   0% ] waiting  1m02.6s
+mixed         • [   0% ] waiting  1m37.6s
+
+running (0m45.0s), 10/20 VUs, 3013 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  28% ] 10 VUs   08.4s/30s
+secret_read   • [   0% ] waiting  0m26.6s
+secret_search • [   0% ] waiting  1m01.6s
+mixed         • [   0% ] waiting  1m36.6s
+
+running (0m46.0s), 10/20 VUs, 3229 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  31% ] 10 VUs   09.4s/30s
+secret_read   • [   0% ] waiting  0m25.6s
+secret_search • [   0% ] waiting  1m00.6s
+mixed         • [   0% ] waiting  1m35.6s
+
+running (0m47.0s), 10/20 VUs, 3453 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  35% ] 10 VUs   10.4s/30s
+secret_read   • [   0% ] waiting  0m24.6s
+secret_search • [   0% ] waiting  0m59.6s
+mixed         • [   0% ] waiting  1m34.6s
+
+running (0m48.0s), 10/20 VUs, 3672 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  38% ] 10 VUs   11.4s/30s
+secret_read   • [   0% ] waiting  0m23.6s
+secret_search • [   0% ] waiting  0m58.6s
+mixed         • [   0% ] waiting  1m33.6s
+
+running (0m49.0s), 10/20 VUs, 3889 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  41% ] 10 VUs   12.4s/30s
+secret_read   • [   0% ] waiting  0m22.6s
+secret_search • [   0% ] waiting  0m57.6s
+mixed         • [   0% ] waiting  1m32.6s
+
+running (0m50.0s), 10/20 VUs, 4109 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  45% ] 10 VUs   13.4s/30s
+secret_read   • [   0% ] waiting  0m21.6s
+secret_search • [   0% ] waiting  0m56.6s
+mixed         • [   0% ] waiting  1m31.6s
+
+running (0m51.0s), 10/20 VUs, 4327 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  48% ] 10 VUs   14.4s/30s
+secret_read   • [   0% ] waiting  0m20.6s
+secret_search • [   0% ] waiting  0m55.6s
+mixed         • [   0% ] waiting  1m30.6s
+
+running (0m52.0s), 10/20 VUs, 4550 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  51% ] 10 VUs   15.4s/30s
+secret_read   • [   0% ] waiting  0m19.6s
+secret_search • [   0% ] waiting  0m54.6s
+mixed         • [   0% ] waiting  1m29.6s
+
+running (0m53.0s), 10/20 VUs, 4771 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  55% ] 10 VUs   16.4s/30s
+secret_read   • [   0% ] waiting  0m18.6s
+secret_search • [   0% ] waiting  0m53.6s
+mixed         • [   0% ] waiting  1m28.6s
+
+running (0m54.0s), 10/20 VUs, 4993 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  58% ] 10 VUs   17.4s/30s
+secret_read   • [   0% ] waiting  0m17.6s
+secret_search • [   0% ] waiting  0m52.6s
+mixed         • [   0% ] waiting  1m27.6s
+
+running (0m55.0s), 10/20 VUs, 5220 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  61% ] 10 VUs   18.4s/30s
+secret_read   • [   0% ] waiting  0m16.6s
+secret_search • [   0% ] waiting  0m51.6s
+mixed         • [   0% ] waiting  1m26.6s
+
+running (0m56.0s), 10/20 VUs, 5444 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  65% ] 10 VUs   19.4s/30s
+secret_read   • [   0% ] waiting  0m15.6s
+secret_search • [   0% ] waiting  0m50.6s
+mixed         • [   0% ] waiting  1m25.6s
+
+running (0m57.0s), 10/20 VUs, 5665 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  68% ] 10 VUs   20.4s/30s
+secret_read   • [   0% ] waiting  0m14.6s
+secret_search • [   0% ] waiting  0m49.6s
+mixed         • [   0% ] waiting  1m24.6s
+
+running (0m58.0s), 10/20 VUs, 5890 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  71% ] 10 VUs   21.4s/30s
+secret_read   • [   0% ] waiting  0m13.6s
+secret_search • [   0% ] waiting  0m48.6s
+mixed         • [   0% ] waiting  1m23.6s
+
+running (0m59.0s), 10/20 VUs, 6111 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  75% ] 10 VUs   22.4s/30s
+secret_read   • [   0% ] waiting  0m12.6s
+secret_search • [   0% ] waiting  0m47.6s
+mixed         • [   0% ] waiting  1m22.6s
+
+running (1m00.0s), 10/20 VUs, 6330 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  78% ] 10 VUs   23.4s/30s
+secret_read   • [   0% ] waiting  0m11.6s
+secret_search • [   0% ] waiting  0m46.6s
+mixed         • [   0% ] waiting  1m21.6s
+
+running (1m01.0s), 10/20 VUs, 6558 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  81% ] 10 VUs   24.4s/30s
+secret_read   • [   0% ] waiting  0m10.6s
+secret_search • [   0% ] waiting  0m45.6s
+mixed         • [   0% ] waiting  1m20.6s
+
+running (1m02.0s), 10/20 VUs, 6777 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  85% ] 10 VUs   25.4s/30s
+secret_read   • [   0% ] waiting  0m09.6s
+secret_search • [   0% ] waiting  0m44.6s
+mixed         • [   0% ] waiting  1m19.6s
+
+running (1m03.0s), 10/20 VUs, 7004 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  88% ] 10 VUs   26.4s/30s
+secret_read   • [   0% ] waiting  0m08.6s
+secret_search • [   0% ] waiting  0m43.6s
+mixed         • [   0% ] waiting  1m18.6s
+
+running (1m04.0s), 10/20 VUs, 7222 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  91% ] 10 VUs   27.4s/30s
+secret_read   • [   0% ] waiting  0m07.6s
+secret_search • [   0% ] waiting  0m42.6s
+mixed         • [   0% ] waiting  1m17.6s
+
+running (1m05.0s), 10/20 VUs, 7437 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  95% ] 10 VUs   28.4s/30s
+secret_read   • [   0% ] waiting  0m06.6s
+secret_search • [   0% ] waiting  0m41.6s
+mixed         • [   0% ] waiting  1m16.6s
+
+running (1m06.0s), 10/20 VUs, 7660 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write    [  98% ] 10 VUs   29.4s/30s
+secret_read   • [   0% ] waiting  0m05.6s
+secret_search • [   0% ] waiting  0m40.6s
+mixed         • [   0% ] waiting  1m15.6s
+
+running (1m07.0s), 00/20 VUs, 7795 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   • [   0% ] waiting  0m04.6s
+secret_search • [   0% ] waiting  0m39.6s
+mixed         • [   0% ] waiting  1m14.6s
+
+running (1m08.0s), 00/20 VUs, 7795 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   • [   0% ] waiting  0m03.6s
+secret_search • [   0% ] waiting  0m38.6s
+mixed         • [   0% ] waiting  1m13.6s
+
+running (1m09.0s), 00/20 VUs, 7795 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   • [   0% ] waiting  0m02.6s
+secret_search • [   0% ] waiting  0m37.6s
+mixed         • [   0% ] waiting  1m12.6s
+
+running (1m10.0s), 00/20 VUs, 7795 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   • [   0% ] waiting  0m01.6s
+secret_search • [   0% ] waiting  0m36.6s
+mixed         • [   0% ] waiting  1m11.6s
+
+running (1m11.0s), 00/20 VUs, 7795 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   • [   0% ] waiting  0m00.6s
+secret_search • [   0% ] waiting  0m35.6s
+mixed         • [   0% ] waiting  1m10.6s
+
+running (1m12.0s), 10/20 VUs, 7843 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [   1% ] 10 VUs   00.4s/30s
+secret_search • [   0% ] waiting  0m34.6s
+mixed         • [   0% ] waiting  1m09.6s
+
+running (1m13.0s), 10/20 VUs, 8071 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [   5% ] 10 VUs   01.4s/30s
+secret_search • [   0% ] waiting  0m33.6s
+mixed         • [   0% ] waiting  1m08.6s
+
+running (1m14.0s), 10/20 VUs, 8300 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [   8% ] 10 VUs   02.4s/30s
+secret_search • [   0% ] waiting  0m32.6s
+mixed         • [   0% ] waiting  1m07.6s
+
+running (1m15.0s), 10/20 VUs, 8530 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  11% ] 10 VUs   03.4s/30s
+secret_search • [   0% ] waiting  0m31.6s
+mixed         • [   0% ] waiting  1m06.6s
+
+running (1m16.0s), 10/20 VUs, 8763 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  15% ] 10 VUs   04.4s/30s
+secret_search • [   0% ] waiting  0m30.6s
+mixed         • [   0% ] waiting  1m05.6s
+
+running (1m17.0s), 10/20 VUs, 8990 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  18% ] 10 VUs   05.4s/30s
+secret_search • [   0% ] waiting  0m29.6s
+mixed         • [   0% ] waiting  1m04.6s
+
+running (1m18.0s), 10/20 VUs, 9221 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  21% ] 10 VUs   06.4s/30s
+secret_search • [   0% ] waiting  0m28.6s
+mixed         • [   0% ] waiting  1m03.6s
+
+running (1m19.0s), 10/20 VUs, 9449 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  25% ] 10 VUs   07.4s/30s
+secret_search • [   0% ] waiting  0m27.6s
+mixed         • [   0% ] waiting  1m02.6s
+
+running (1m20.0s), 10/20 VUs, 9681 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  28% ] 10 VUs   08.4s/30s
+secret_search • [   0% ] waiting  0m26.6s
+mixed         • [   0% ] waiting  1m01.6s
+
+running (1m21.0s), 10/20 VUs, 9904 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  31% ] 10 VUs   09.4s/30s
+secret_search • [   0% ] waiting  0m25.6s
+mixed         • [   0% ] waiting  1m00.6s
+
+running (1m22.0s), 10/20 VUs, 10129 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  35% ] 10 VUs   10.4s/30s
+secret_search • [   0% ] waiting  0m24.6s
+mixed         • [   0% ] waiting  0m59.6s
+
+running (1m23.0s), 10/20 VUs, 10359 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  38% ] 10 VUs   11.4s/30s
+secret_search • [   0% ] waiting  0m23.6s
+mixed         • [   0% ] waiting  0m58.6s
+
+running (1m24.0s), 10/20 VUs, 10585 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  41% ] 10 VUs   12.4s/30s
+secret_search • [   0% ] waiting  0m22.6s
+mixed         • [   0% ] waiting  0m57.6s
+
+running (1m25.0s), 10/20 VUs, 10814 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  45% ] 10 VUs   13.4s/30s
+secret_search • [   0% ] waiting  0m21.6s
+mixed         • [   0% ] waiting  0m56.6s
+
+running (1m26.0s), 10/20 VUs, 11041 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  48% ] 10 VUs   14.4s/30s
+secret_search • [   0% ] waiting  0m20.6s
+mixed         • [   0% ] waiting  0m55.6s
+
+running (1m27.0s), 10/20 VUs, 11278 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  51% ] 10 VUs   15.4s/30s
+secret_search • [   0% ] waiting  0m19.6s
+mixed         • [   0% ] waiting  0m54.6s
+
+running (1m28.0s), 10/20 VUs, 11511 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  55% ] 10 VUs   16.4s/30s
+secret_search • [   0% ] waiting  0m18.6s
+mixed         • [   0% ] waiting  0m53.6s
+
+running (1m29.0s), 10/20 VUs, 11745 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  58% ] 10 VUs   17.4s/30s
+secret_search • [   0% ] waiting  0m17.6s
+mixed         • [   0% ] waiting  0m52.6s
+
+running (1m30.0s), 10/20 VUs, 11976 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  61% ] 10 VUs   18.4s/30s
+secret_search • [   0% ] waiting  0m16.6s
+mixed         • [   0% ] waiting  0m51.6s
+
+running (1m31.0s), 10/20 VUs, 12201 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  65% ] 10 VUs   19.4s/30s
+secret_search • [   0% ] waiting  0m15.6s
+mixed         • [   0% ] waiting  0m50.6s
+
+running (1m32.0s), 10/20 VUs, 12427 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  68% ] 10 VUs   20.4s/30s
+secret_search • [   0% ] waiting  0m14.6s
+mixed         • [   0% ] waiting  0m49.6s
+
+running (1m33.0s), 10/20 VUs, 12651 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  71% ] 10 VUs   21.4s/30s
+secret_search • [   0% ] waiting  0m13.6s
+mixed         • [   0% ] waiting  0m48.6s
+
+running (1m34.0s), 10/20 VUs, 12881 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  75% ] 10 VUs   22.4s/30s
+secret_search • [   0% ] waiting  0m12.6s
+mixed         • [   0% ] waiting  0m47.6s
+
+running (1m35.0s), 10/20 VUs, 13114 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  78% ] 10 VUs   23.4s/30s
+secret_search • [   0% ] waiting  0m11.6s
+mixed         • [   0% ] waiting  0m46.6s
+
+running (1m36.0s), 10/20 VUs, 13343 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  81% ] 10 VUs   24.4s/30s
+secret_search • [   0% ] waiting  0m10.6s
+mixed         • [   0% ] waiting  0m45.6s
+
+running (1m37.0s), 10/20 VUs, 13576 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  85% ] 10 VUs   25.4s/30s
+secret_search • [   0% ] waiting  0m09.6s
+mixed         • [   0% ] waiting  0m44.6s
+
+running (1m38.0s), 10/20 VUs, 13811 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  88% ] 10 VUs   26.4s/30s
+secret_search • [   0% ] waiting  0m08.6s
+mixed         • [   0% ] waiting  0m43.6s
+
+running (1m39.0s), 10/20 VUs, 14043 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  91% ] 10 VUs   27.4s/30s
+secret_search • [   0% ] waiting  0m07.6s
+mixed         • [   0% ] waiting  0m42.6s
+
+running (1m40.0s), 10/20 VUs, 14276 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  95% ] 10 VUs   28.4s/30s
+secret_search • [   0% ] waiting  0m06.6s
+mixed         • [   0% ] waiting  0m41.6s
+
+running (1m41.0s), 10/20 VUs, 14514 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read     [  98% ] 10 VUs   29.4s/30s
+secret_search • [   0% ] waiting  0m05.6s
+mixed         • [   0% ] waiting  0m40.6s
+
+running (1m42.0s), 00/20 VUs, 14653 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search • [   0% ] waiting  0m04.6s
+mixed         • [   0% ] waiting  0m39.6s
+
+running (1m43.0s), 00/20 VUs, 14653 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search • [   0% ] waiting  0m03.6s
+mixed         • [   0% ] waiting  0m38.6s
+
+running (1m44.0s), 00/20 VUs, 14653 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search • [   0% ] waiting  0m02.6s
+mixed         • [   0% ] waiting  0m37.6s
+
+running (1m45.0s), 00/20 VUs, 14653 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search • [   0% ] waiting  0m01.6s
+mixed         • [   0% ] waiting  0m36.6s
+
+running (1m46.0s), 00/20 VUs, 14653 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search • [   0% ] waiting  0m00.6s
+mixed         • [   0% ] waiting  0m35.6s
+
+running (1m47.0s), 10/20 VUs, 14749 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [   1% ] 10 VUs   00.4s/30s
+mixed         • [   0% ] waiting  0m34.6s
+
+running (1m48.0s), 10/20 VUs, 14986 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [   5% ] 10 VUs   01.4s/30s
+mixed         • [   0% ] waiting  0m33.6s
+
+running (1m49.0s), 10/20 VUs, 15221 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [   8% ] 10 VUs   02.4s/30s
+mixed         • [   0% ] waiting  0m32.6s
+
+running (1m50.0s), 10/20 VUs, 15447 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  11% ] 10 VUs   03.4s/30s
+mixed         • [   0% ] waiting  0m31.6s
+
+running (1m51.0s), 10/20 VUs, 15667 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  15% ] 10 VUs   04.4s/30s
+mixed         • [   0% ] waiting  0m30.6s
+
+running (1m52.0s), 10/20 VUs, 15894 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  18% ] 10 VUs   05.4s/30s
+mixed         • [   0% ] waiting  0m29.6s
+
+running (1m53.0s), 10/20 VUs, 16123 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  21% ] 10 VUs   06.4s/30s
+mixed         • [   0% ] waiting  0m28.6s
+
+running (1m54.0s), 10/20 VUs, 16348 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  25% ] 10 VUs   07.4s/30s
+mixed         • [   0% ] waiting  0m27.6s
+
+running (1m55.0s), 10/20 VUs, 16577 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  28% ] 10 VUs   08.4s/30s
+mixed         • [   0% ] waiting  0m26.6s
+
+running (1m56.0s), 10/20 VUs, 16805 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  31% ] 10 VUs   09.4s/30s
+mixed         • [   0% ] waiting  0m25.6s
+
+running (1m57.0s), 10/20 VUs, 17034 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  35% ] 10 VUs   10.4s/30s
+mixed         • [   0% ] waiting  0m24.6s
+
+running (1m58.0s), 10/20 VUs, 17260 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  38% ] 10 VUs   11.4s/30s
+mixed         • [   0% ] waiting  0m23.6s
+
+running (1m59.0s), 10/20 VUs, 17484 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  41% ] 10 VUs   12.4s/30s
+mixed         • [   0% ] waiting  0m22.6s
+
+running (2m00.0s), 10/20 VUs, 17713 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  45% ] 10 VUs   13.4s/30s
+mixed         • [   0% ] waiting  0m21.6s
+
+running (2m01.0s), 10/20 VUs, 17943 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  48% ] 10 VUs   14.4s/30s
+mixed         • [   0% ] waiting  0m20.6s
+
+running (2m02.0s), 10/20 VUs, 18169 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  51% ] 10 VUs   15.4s/30s
+mixed         • [   0% ] waiting  0m19.6s
+
+running (2m03.0s), 10/20 VUs, 18401 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  55% ] 10 VUs   16.4s/30s
+mixed         • [   0% ] waiting  0m18.6s
+
+running (2m04.0s), 10/20 VUs, 18630 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  58% ] 10 VUs   17.4s/30s
+mixed         • [   0% ] waiting  0m17.6s
+
+running (2m05.0s), 10/20 VUs, 18858 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  61% ] 10 VUs   18.4s/30s
+mixed         • [   0% ] waiting  0m16.6s
+
+running (2m06.0s), 10/20 VUs, 19084 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  65% ] 10 VUs   19.4s/30s
+mixed         • [   0% ] waiting  0m15.6s
+
+running (2m07.0s), 10/20 VUs, 19313 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  68% ] 10 VUs   20.4s/30s
+mixed         • [   0% ] waiting  0m14.6s
+
+running (2m08.0s), 10/20 VUs, 19544 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  71% ] 10 VUs   21.4s/30s
+mixed         • [   0% ] waiting  0m13.6s
+
+running (2m09.0s), 10/20 VUs, 19777 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  75% ] 10 VUs   22.4s/30s
+mixed         • [   0% ] waiting  0m12.6s
+
+running (2m10.0s), 10/20 VUs, 20012 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  78% ] 10 VUs   23.4s/30s
+mixed         • [   0% ] waiting  0m11.6s
+
+running (2m11.0s), 10/20 VUs, 20248 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  81% ] 10 VUs   24.4s/30s
+mixed         • [   0% ] waiting  0m10.6s
+
+running (2m12.0s), 10/20 VUs, 20481 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  85% ] 10 VUs   25.4s/30s
+mixed         • [   0% ] waiting  0m09.6s
+
+running (2m13.0s), 10/20 VUs, 20717 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  88% ] 10 VUs   26.4s/30s
+mixed         • [   0% ] waiting  0m08.6s
+
+running (2m14.0s), 10/20 VUs, 20950 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  91% ] 10 VUs   27.4s/30s
+mixed         • [   0% ] waiting  0m07.6s
+
+running (2m15.0s), 10/20 VUs, 21187 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  95% ] 10 VUs   28.4s/30s
+mixed         • [   0% ] waiting  0m06.6s
+
+running (2m16.0s), 10/20 VUs, 21423 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search   [  98% ] 10 VUs   29.4s/30s
+mixed         • [   0% ] waiting  0m05.6s
+
+running (2m17.0s), 00/20 VUs, 21563 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search ✓ [ 100% ] 10 VUs   30s
+mixed         • [   0% ] waiting  0m04.6s
+
+running (2m18.0s), 00/20 VUs, 21563 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search ✓ [ 100% ] 10 VUs   30s
+mixed         • [   0% ] waiting  0m03.6s
+
+running (2m19.0s), 00/20 VUs, 21563 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search ✓ [ 100% ] 10 VUs   30s
+mixed         • [   0% ] waiting  0m02.6s
+
+running (2m20.0s), 00/20 VUs, 21563 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search ✓ [ 100% ] 10 VUs   30s
+mixed         • [   0% ] waiting  0m01.6s
+
+running (2m21.0s), 00/20 VUs, 21563 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs   30s
+secret_write  ✓ [ 100% ] 10 VUs   30s
+secret_read   ✓ [ 100% ] 10 VUs   30s
+secret_search ✓ [ 100% ] 10 VUs   30s
+mixed         • [   0% ] waiting  0m00.6s
+
+running (2m22.0s), 01/20 VUs, 21566 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [   1% ] 01/10 VUs  00.4s/50.0s
+
+running (2m23.0s), 02/20 VUs, 21576 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [   3% ] 02/10 VUs  01.4s/50.0s
+
+running (2m24.0s), 03/20 VUs, 21593 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [   5% ] 03/10 VUs  02.4s/50.0s
+
+running (2m25.0s), 04/20 VUs, 21620 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [   7% ] 04/10 VUs  03.4s/50.0s
+
+running (2m26.0s), 04/20 VUs, 21653 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [   9% ] 04/10 VUs  04.4s/50.0s
+
+running (2m27.0s), 05/20 VUs, 21693 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  11% ] 05/10 VUs  05.4s/50.0s
+
+running (2m28.0s), 06/20 VUs, 21740 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  13% ] 06/10 VUs  06.4s/50.0s
+
+running (2m29.0s), 07/20 VUs, 21798 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  15% ] 07/10 VUs  07.4s/50.0s
+
+running (2m30.0s), 08/20 VUs, 21859 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  17% ] 08/10 VUs  08.4s/50.0s
+
+running (2m31.0s), 09/20 VUs, 21932 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  19% ] 09/10 VUs  09.4s/50.0s
+
+running (2m32.0s), 10/20 VUs, 22012 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  21% ] 10/10 VUs  10.4s/50.0s
+
+running (2m33.0s), 10/20 VUs, 22097 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  23% ] 10/10 VUs  11.4s/50.0s
+
+running (2m34.0s), 10/20 VUs, 22182 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  25% ] 10/10 VUs  12.4s/50.0s
+
+running (2m35.0s), 10/20 VUs, 22264 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  27% ] 10/10 VUs  13.4s/50.0s
+
+running (2m36.0s), 10/20 VUs, 22352 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  29% ] 10/10 VUs  14.4s/50.0s
+
+running (2m37.0s), 10/20 VUs, 22436 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  31% ] 10/10 VUs  15.4s/50.0s
+
+running (2m38.0s), 10/20 VUs, 22519 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  33% ] 10/10 VUs  16.4s/50.0s
+
+running (2m39.0s), 10/20 VUs, 22604 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  35% ] 10/10 VUs  17.4s/50.0s
+
+running (2m40.0s), 10/20 VUs, 22690 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  37% ] 10/10 VUs  18.4s/50.0s
+
+running (2m41.0s), 10/20 VUs, 22775 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  39% ] 10/10 VUs  19.4s/50.0s
+
+running (2m42.0s), 10/20 VUs, 22859 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  41% ] 10/10 VUs  20.4s/50.0s
+
+running (2m43.0s), 10/20 VUs, 22944 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  43% ] 10/10 VUs  21.4s/50.0s
+
+running (2m44.0s), 10/20 VUs, 23029 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  45% ] 10/10 VUs  22.4s/50.0s
+
+running (2m45.0s), 10/20 VUs, 23113 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  47% ] 10/10 VUs  23.4s/50.0s
+
+running (2m46.0s), 10/20 VUs, 23199 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  49% ] 10/10 VUs  24.4s/50.0s
+
+running (2m47.0s), 10/20 VUs, 23280 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  51% ] 10/10 VUs  25.4s/50.0s
+
+running (2m48.0s), 10/20 VUs, 23363 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  53% ] 10/10 VUs  26.4s/50.0s
+
+running (2m49.0s), 10/20 VUs, 23450 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  55% ] 10/10 VUs  27.4s/50.0s
+
+running (2m50.0s), 10/20 VUs, 23532 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  57% ] 10/10 VUs  28.4s/50.0s
+
+running (2m51.0s), 10/20 VUs, 23615 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  59% ] 10/10 VUs  29.4s/50.0s
+
+running (2m52.0s), 10/20 VUs, 23702 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  61% ] 10/10 VUs  30.4s/50.0s
+
+running (2m53.0s), 10/20 VUs, 23782 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  63% ] 10/10 VUs  31.4s/50.0s
+
+running (2m54.0s), 10/20 VUs, 23869 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  65% ] 10/10 VUs  32.4s/50.0s
+
+running (2m55.0s), 10/20 VUs, 23952 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  67% ] 10/10 VUs  33.4s/50.0s
+
+running (2m56.0s), 10/20 VUs, 24039 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  69% ] 10/10 VUs  34.4s/50.0s
+
+running (2m57.0s), 10/20 VUs, 24123 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  71% ] 10/10 VUs  35.4s/50.0s
+
+running (2m58.0s), 10/20 VUs, 24203 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  73% ] 10/10 VUs  36.4s/50.0s
+
+running (2m59.0s), 10/20 VUs, 24288 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  75% ] 10/10 VUs  37.4s/50.0s
+
+running (3m00.0s), 10/20 VUs, 24375 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  77% ] 10/10 VUs  38.4s/50.0s
+
+running (3m01.0s), 10/20 VUs, 24457 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  79% ] 10/10 VUs  39.4s/50.0s
+
+running (3m02.0s), 10/20 VUs, 24539 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  81% ] 10/10 VUs  40.4s/50.0s
+
+running (3m03.0s), 09/20 VUs, 24624 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  83% ] 09/10 VUs  41.4s/50.0s
+
+running (3m04.0s), 08/20 VUs, 24696 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  85% ] 08/10 VUs  42.4s/50.0s
+
+running (3m05.0s), 07/20 VUs, 24761 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  87% ] 07/10 VUs  43.4s/50.0s
+
+running (3m06.0s), 06/20 VUs, 24816 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  89% ] 06/10 VUs  44.4s/50.0s
+
+running (3m07.0s), 05/20 VUs, 24865 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  91% ] 05/10 VUs  45.4s/50.0s
+
+running (3m08.0s), 04/20 VUs, 24904 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  93% ] 04/10 VUs  46.4s/50.0s
+
+running (3m09.0s), 03/20 VUs, 24936 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  95% ] 03/10 VUs  47.4s/50.0s
+
+running (3m10.0s), 02/20 VUs, 24958 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  97% ] 02/10 VUs  48.4s/50.0s
+
+running (3m11.0s), 01/20 VUs, 24971 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed           [  99% ] 01/10 VUs  49.4s/50.0s
+time="2026-03-15T14:18:36+01:00" level=info msg="Teardown: 100 seed secrets were used." source=console
+
+
+  █ THRESHOLDS 
+
+    hierarkey_auth_latency
+    ✓ 'p(95)<10000' p(95)=266.27ms
+
+    hierarkey_create_latency
+    ✓ 'p(95)<500' p(95)=78.2ms
+
+    hierarkey_error_rate
+    ✓ 'rate<0.01' rate=0.00%
+
+    hierarkey_reveal_latency
+    ✓ 'p(95)<200' p(95)=81.37ms
+
+    hierarkey_search_latency
+    ✓ 'p(95)<200' p(95)=63.13ms
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 34328   179.122143/s
+    checks_succeeded...: 100.00% 34328 out of 34328
+    checks_failed......: 0.00%   0 out of 34328
+
+    ✓ login 200
+    ✓ login has token
+    ✓ namespace created or exists
+    ✓ whoami 200
+    ✓ create 200
+    ✓ reveal 200
+    ✓ reveal has value
+    ✓ search 200
+    ✓ mixed search 200
+    ✓ mixed reveal 200
+    ✓ mixed create 200
+
+    CUSTOM
+    hierarkey_auth_latency.........: avg=206.72ms min=110.89ms med=199.7ms max=549.61ms p(90)=252.26ms p(95)=266.27ms
+    hierarkey_create_latency.......: avg=43.86ms  min=13.51ms  med=40.36ms max=193.91ms p(90)=67.89ms  p(95)=78.2ms  
+    hierarkey_error_rate...........: 0.00%  0 out of 26223
+    hierarkey_reveal_latency.......: avg=36.61ms  min=9.41ms   med=31.49ms max=182.65ms p(90)=67ms     p(95)=81.37ms 
+    hierarkey_search_latency.......: avg=40.91ms  min=19.45ms  med=38.94ms max=110.78ms p(90)=56.83ms  p(95)=63.13ms 
+    hierarkey_secrets_created......: 6909   36.050888/s
+
+    HTTP
+    http_req_duration..............: avg=47.86ms  min=5.26ms   med=38.12ms max=549.61ms p(90)=74.79ms  p(95)=127.75ms
+      { expected_response:true }...: avg=47.86ms  min=5.26ms   med=38.12ms max=549.61ms p(90)=74.79ms  p(95)=127.75ms
+    http_req_failed................: 0.00%  0 out of 26324
+    http_reqs......................: 26324  137.357588/s
+
+    EXECUTION
+    iteration_duration.............: avg=64.32ms  min=11.77ms  med=44.87ms max=607.65ms p(90)=121.19ms p(95)=165.83ms
+    iterations.....................: 24977  130.328996/s
+    vus............................: 1      min=0          max=10
+    vus_max........................: 20     min=20         max=20
+
+    NETWORK
+    data_received..................: 82 MB  426 kB/s
+    data_sent......................: 8.3 MB 43 kB/s
+
+
+
+
+running (3m11.6s), 00/20 VUs, 24977 complete and 0 interrupted iterations
+auth_only     ✓ [ 100% ] 10 VUs     30s
+secret_write  ✓ [ 100% ] 10 VUs     30s
+secret_read   ✓ [ 100% ] 10 VUs     30s
+secret_search ✓ [ 100% ] 10 VUs     30s
+mixed         ✓ [ 100% ] 00/10 VUs  50s

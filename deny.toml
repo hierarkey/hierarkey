@@ -1,0 +1,44 @@
+[advisories]
+version = 2
+unmaintained = "all"
+yanked = "warn"
+ignore = [
+    # The rsa crate has a timing side-channel vulnerability in RSA private-key
+    # operations (Marvin Attack). No fix is available upstream.
+    # Two dependency paths pull it in:
+    #   1. sqlx-mysql — an unreachable phantom dep; we only enable postgres.
+    #   2. jsonwebtoken — used only for JWT *verification* (public-key ops);
+    #      the vulnerable private-key path is never exercised.
+    # See oidc.rs ALLOWED_ALGORITHMS for the full rationale.
+    { id = "RUSTSEC-2023-0071", reason = "rsa crate only reachable via public-key JWT verification and unreachable sqlx-mysql; private-key ops never used" },
+]
+
+[licenses]
+version = 2
+# Workspace crates (publish = false) are exempt — their license is governed by
+# the LICENSE file in this repository (AGPL-3.0 with commercial exception).
+private.ignore = true
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "CDLA-Permissive-2.0",
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "warn"
+deny = [
+    # AI Fork of serde_yaml
+    "serde_yml",
+    # AI Fork of paste
+    "pastey",
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

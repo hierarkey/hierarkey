@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "hierarkey-cli",
+    "hierarkey-server",
+    "hierarkey-core",
+]
+resolver = "2"

@@ -1,0 +1,27 @@
+[package]
+name = "hierarkey_core"
+version = "0.4.0"
+edition = "2024"
+rust-version = "1.88.0"
+authors = ["Joshua Thijssen <jthijssen@hierarkey.com>"]
+description = "Core library for Hierarkey secret manager."
+license-file = "../LICENSE"
+repository = "https://github.com/hierarkey/hierarkey"
+homepage = "https://github.com/hierarkey/hierarkey"
+documentation = "https://github.com/hierarkey/hierarkey"
+publish = false  # Prevents accidental publishing to crates.io
+
+[lib]
+name = "hierarkey_core"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1.0.102"
+chrono = {  version = "0.4.44", features = ["serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+config = {  version = "0.15.22", default-features = false, features = ["toml"] }
+humantime = "2.3.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "migrate", "macros"] }
+thiserror = "2.0.18"

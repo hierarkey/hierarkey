@@ -1,0 +1,21 @@
+diff --git a/hierarkey-server/src/service/account.rs b/hierarkey-server/src/service/account.rs
+index a07731b..6efb829 100644
+--- a/hierarkey-server/src/service/account.rs
++++ b/hierarkey-server/src/service/account.rs
+@@ -288,10 +288,14 @@ impl AccountService {
+ 
+     pub async fn create_account(&self, ctx: &CallContext, data: &AccountData) -> CkResult<Account> {
+         trace!("Creating account '{}'", data.account_name);
+-        // Only admins may create accounts. System actors (bootstrap) bypass this check.
++        // Only admins may create accounts.
++        // Exception: during bootstrap (no admins exist yet) any authenticated actor may
++        // create the first account, mirroring the same pattern used by grant_admin.
++        // System actors also bypass this check.
+         if !ctx.actor.is_system() {
+             let actor_id = ctx.actor.require_account_id()?;
+-            if !self.account_manager.is_admin(*actor_id).await? {
++            let admin_count = self.account_manager.get_admin_count().await?;
++            if admin_count > 0 && !self.account_manager.is_admin(*actor_id).await? {
+                 return Err(hierarkey_core::error::auth::AuthError::Forbidden {
+                     reason: "Admin privilege required to create accounts",
+                 }

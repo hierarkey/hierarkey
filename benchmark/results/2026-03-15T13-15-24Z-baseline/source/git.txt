@@ -1,0 +1,4 @@
+repo: /home/jthijssen/code/hierarkey/hierarkey
+branch: hk-bench
+commit: 51284c627872a78dd8dddd7ff62a32eec6f974de
+dirty: yes

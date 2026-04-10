@@ -1,0 +1,911 @@
+diff --git a/benchmark/README.md b/benchmark/README.md
+new file mode 100644
+index 0000000..1ed8f98
+--- /dev/null
++++ b/benchmark/README.md
+@@ -0,0 +1,79 @@
++# Hierarkey Benchmarks
++
++## Prerequisites
++
++1. **k6** installed — https://k6.io/docs/get-started/installation/
++2. A running Hierarkey server with:
++   - Admin account created (username + password)
++   - Master key named `root` created, active, and unlocked
++   - The `/bench` namespace does **not** need to exist — setup creates it
++
++## Quick start
++
++```sh
++# Defaults: http://localhost:8080, admin/admin, 10 VUs, 30s per scenario
++k6 run bench/benchmark.js
++
++# Custom server / credentials
++HKEY_URL=https://my-server:8443 \
++HKEY_ADMIN_USER=admin \
++HKEY_ADMIN_PASS=my-password \
++k6 run bench/benchmark.js
++
++# Higher load
++HKEY_VUS=50 HKEY_DURATION=60s k6 run bench/benchmark.js
++```
++
++## Environment variables
++
++| Variable         | Default                  | Description                  |
++|------------------|--------------------------|------------------------------|
++| `HKEY_URL`       | `http://localhost:8080`  | Server base URL              |
++| `HKEY_ADMIN_USER`| `admin`                  | Admin account name           |
++| `HKEY_ADMIN_PASS`| `admin`                  | Admin password               |
++| `HKEY_VUS`       | `10`                     | Virtual users per scenario   |
++| `HKEY_DURATION`  | `30s`                    | Duration per scenario        |
++
++## Scenarios
++
++The script runs five scenarios **sequentially** (each waits for the previous to finish):
++
++| Scenario       | What it measures                              |
++|----------------|-----------------------------------------------|
++| `auth_only`    | Login + whoami round-trip latency/throughput  |
++| `secret_write` | Secret creation (encryption + DB write)       |
++| `secret_read`  | Secret reveal (DB read + decryption)          |
++| `secret_search`| Search within a namespace (DB query)          |
++| `mixed`        | 10% create / 60% reveal / 30% search         |
++
++Setup seeds 100 secrets into `/bench` before the scenarios run. These are reused by the read and mixed scenarios.
++
++## Metrics
++
++Custom metrics reported in the summary:
++
++| Metric                       | Description                        |
++|------------------------------|------------------------------------|
++| `hierarkey_auth_latency`     | Auth token + whoami latency (ms)   |
++| `hierarkey_create_latency`   | Secret create latency (ms)         |
++| `hierarkey_reveal_latency`   | Secret reveal latency (ms)         |
++| `hierarkey_search_latency`   | Secret search latency (ms)         |
++| `hierarkey_secrets_created`  | Total secrets created              |
++| `hierarkey_error_rate`       | Fraction of failed requests        |
++
++## Thresholds (pass/fail)
++
++| Metric                     | Threshold  |
++|----------------------------|------------|
++| Auth latency p95           | < 500 ms   |
++| Create latency p95         | < 1000 ms  |
++| Reveal latency p95         | < 500 ms   |
++| Search latency p95         | < 500 ms   |
++| Error rate                 | < 1%       |
++
++## Tips
++
++- Run against a **local** server first to establish a baseline, then against a deployed instance.
++- Increase `HKEY_VUS` gradually to find where latency starts climbing.
++- The mixed scenario includes a 100ms think-time (`sleep(0.1)`) to simulate realistic pacing — remove it for maximum throughput testing.
++- Use `k6 run --out json=results.json bench/benchmark.js` to save raw metrics for later analysis.
+diff --git a/benchmark/benchmark.js b/benchmark/benchmark.js
+new file mode 100644
+index 0000000..a946e71
+--- /dev/null
++++ b/benchmark/benchmark.js
+@@ -0,0 +1,431 @@
++/**
++ * Hierarkey k6 Benchmark
++ *
++ * Prerequisites (server must be pre-bootstrapped):
++ *   - Admin account exists with username/password set via env vars
++ *   - A master key named "root" must exist and be active (unlocked)
++ *   - Benchmark namespace /bench will be created on setup
++ *
++ * Usage:
++ *   k6 run bench/benchmark.js
++ *
++ * Environment variables (with defaults):
++ *   HKEY_URL           Server base URL          (default: http://localhost:8080)
++ *   HKEY_ADMIN_USER    Admin account name        (default: admin)
++ *   HKEY_ADMIN_PASS    Admin password            (default: admin)
++ *   HKEY_VUS           Virtual users             (default: 10)
++ *   HKEY_DURATION      Test duration             (default: 30s)
++ *
++ * Scenarios:
++ *   auth_only      - Repeated logins (measures Argon2 + token issuance throughput)
++ *   secret_write   - Create a new secret each iteration (token reused per VU)
++ *   secret_read    - Reveal an existing secret (token reused per VU)
++ *   secret_search  - Search secrets with namespace scope (token reused per VU)
++ *   mixed          - Realistic mix: 10% create, 60% reveal, 30% search
++ */
++
++import http from "k6/http";
++import { check, sleep } from "k6";
++import { Counter, Rate, Trend } from "k6/metrics";
++import encoding from "k6/encoding";
++
++// ---------------------------------------------------------------------------
++// Config
++// ---------------------------------------------------------------------------
++
++const BASE_URL = __ENV.HKEY_URL        || "http://localhost:8080";
++const ADMIN    = __ENV.HKEY_ADMIN_USER || "admin";
++const PASS     = __ENV.HKEY_ADMIN_PASS || "admin";
++const VUS      = parseInt(__ENV.HKEY_VUS      || "10");
++const DURATION = __ENV.HKEY_DURATION          || "30s";
++
++// Namespace used for all benchmark secrets
++const BENCH_NS = "/bench";
++
++// Pre-seeded secrets for read/reveal benchmarks (populated in setup())
++const SEED_COUNT = 100;
++
++// ---------------------------------------------------------------------------
++// Per-VU token cache
++//
++// k6 module-level variables are per-VU: each VU gets its own copy.
++// getToken() logs in once on the first iteration and reuses the token
++// for all subsequent iterations of that VU.
++// Only authScenario calls login() directly — that's what it benchmarks.
++// ---------------------------------------------------------------------------
++
++let vuToken = null;
++
++function getToken() {
++    if (vuToken === null) {
++        vuToken = login();
++    }
++    return vuToken;
++}
++
++// ---------------------------------------------------------------------------
++// Custom metrics
++// ---------------------------------------------------------------------------
++
++const authLatency    = new Trend("hierarkey_auth_latency",    true);
++const createLatency  = new Trend("hierarkey_create_latency",  true);
++const revealLatency  = new Trend("hierarkey_reveal_latency",  true);
++const searchLatency  = new Trend("hierarkey_search_latency",  true);
++const errorRate      = new Rate("hierarkey_error_rate");
++const secretsCreated = new Counter("hierarkey_secrets_created");
++
++// ---------------------------------------------------------------------------
++// k6 options
++// ---------------------------------------------------------------------------
++
++export const options = {
++    scenarios: {
++        // --- Argon2 + token issuance throughput ---
++        auth_only: {
++            executor: "constant-vus",
++            vus: VUS,
++            duration: DURATION,
++            exec: "authScenario",
++            tags: { scenario: "auth_only" },
++        },
++
++        // --- Secret creation throughput (token reused per VU) ---
++        secret_write: {
++            executor: "constant-vus",
++            vus: VUS,
++            duration: DURATION,
++            exec: "writeScenario",
++            tags: { scenario: "secret_write" },
++            startTime: `${parseDuration(DURATION) + 5}s`,
++        },
++
++        // --- Secret reveal throughput (token reused per VU) ---
++        secret_read: {
++            executor: "constant-vus",
++            vus: VUS,
++            duration: DURATION,
++            exec: "readScenario",
++            tags: { scenario: "secret_read" },
++            startTime: `${parseDuration(DURATION) * 2 + 10}s`,
++        },
++
++        // --- Search throughput (token reused per VU) ---
++        secret_search: {
++            executor: "constant-vus",
++            vus: VUS,
++            duration: DURATION,
++            exec: "searchScenario",
++            tags: { scenario: "secret_search" },
++            startTime: `${parseDuration(DURATION) * 3 + 15}s`,
++        },
++
++        // --- Realistic mixed workload (token reused per VU) ---
++        mixed: {
++            executor: "ramping-vus",
++            startVUs: 1,
++            stages: [
++                { duration: "10s", target: VUS },
++                { duration: DURATION, target: VUS },
++                { duration: "10s", target: 0 },
++            ],
++            exec: "mixedScenario",
++            tags: { scenario: "mixed" },
++            startTime: `${parseDuration(DURATION) * 4 + 20}s`,
++        },
++    },
++
++    thresholds: {
++        // Auth is Argon2 — intentionally slow, just track it (no hard limit)
++        "hierarkey_auth_latency":   ["p(95)<10000"],
++        // Creates involve crypto — allow headroom
++        "hierarkey_create_latency": ["p(95)<500"],
++        // Reveals involve crypto decryption
++        "hierarkey_reveal_latency": ["p(95)<200"],
++        // Search is a DB query
++        "hierarkey_search_latency": ["p(95)<200"],
++        // Overall error rate < 1%
++        "hierarkey_error_rate":     ["rate<0.01"],
++    },
++};
++
++// ---------------------------------------------------------------------------
++// Helpers
++// ---------------------------------------------------------------------------
++
++/** Parse duration string like "30s", "2m" to integer seconds. */
++function parseDuration(d) {
++    if (d.endsWith("m")) return parseInt(d) * 60;
++    if (d.endsWith("s")) return parseInt(d);
++    return parseInt(d);
++}
++
++const JSON_HEADERS = { "Content-Type": "application/json" };
++
++function authHeaders(token) {
++    return {
++        "Content-Type": "application/json",
++        "Authorization": `Bearer ${token}`,
++    };
++}
++
++/**
++ * Login and return an access token.
++ * Intentionally slow due to Argon2 — only call this once per VU via getToken(),
++ * or deliberately in authScenario to measure that cost.
++ */
++function login() {
++    const res = http.post(
++        `${BASE_URL}/v1/auth/login`,
++        JSON.stringify({
++            account_name: ADMIN,
++            password:     PASS,
++            description:  "k6 benchmark token",
++            ttl_minutes:  60,
++            scope:        "auth",
++        }),
++        { headers: JSON_HEADERS, tags: { name: "auth/login" } }
++    );
++
++    const ok = check(res, {
++        "login 200": (r) => r.status === 200,
++        "login has token": (r) => {
++            try { return JSON.parse(r.body).data.access_token !== undefined; }
++            catch (_) { return false; }
++        },
++    });
++    errorRate.add(!ok);
++    authLatency.add(res.timings.duration);
++
++    if (!ok) return null;
++    return JSON.parse(res.body).data.access_token;
++}
++
++/** Generate a unique secret reference within the bench namespace. */
++function randomRef(prefix) {
++    return `${BENCH_NS}:${prefix}-${__VU}-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
++}
++
++/** Base64-encode a plaintext string. */
++function b64(s) {
++    return encoding.b64encode(s);
++}
++
++// ---------------------------------------------------------------------------
++// Setup: create namespace + seed SEED_COUNT secrets for read benchmarks
++// ---------------------------------------------------------------------------
++
++export function setup() {
++    const token = login();
++    if (!token) {
++        throw new Error("setup: login failed — check HKEY_ADMIN_USER / HKEY_ADMIN_PASS");
++    }
++    const headers = authHeaders(token);
++
++    // Create benchmark namespace (ignore conflict if it already exists)
++    const nsRes = http.post(
++        `${BASE_URL}/v1/namespaces`,
++        JSON.stringify({ namespace: BENCH_NS, description: "k6 benchmark namespace", labels: {} }),
++        { headers }
++    );
++    const nsOk = nsRes.status === 200 || nsRes.status === 409;
++    if (!nsOk) {
++        console.error(`Namespace creation failed: HTTP ${nsRes.status} — ${nsRes.body}`);
++        throw new Error(`setup: could not create namespace ${BENCH_NS}`);
++    }
++    check(nsRes, { "namespace created or exists": () => nsOk });
++
++    // Seed secrets for read scenarios
++    const seedRefs = [];
++    for (let i = 0; i < SEED_COUNT; i++) {
++        const ref = `${BENCH_NS}:seed-${i}`;
++        const createRes = http.post(
++            `${BASE_URL}/v1/secrets`,
++            JSON.stringify({
++                sec_ref:     ref,
++                value_b64:   b64(`benchmark-seed-value-${i}`),
++                secret_type: "opaque",
++                description: `Benchmark seed secret ${i}`,
++                labels:      { bench: "true" },
++            }),
++            { headers }
++        );
++        // 200 = created, 409 = already exists from a previous run — both fine
++        if (createRes.status === 200 || createRes.status === 409) {
++            seedRefs.push(ref);
++        } else if (i === 0) {
++            // Log the first failure to diagnose issues early
++            console.error(`First seed secret failed: HTTP ${createRes.status} — ${createRes.body}`);
++        }
++    }
++
++    if (seedRefs.length === 0) {
++        throw new Error("setup: no seed secrets were created — reveal/mixed scenarios will not work");
++    }
++
++    console.log(`Setup complete. Seeded ${seedRefs.length} secrets in ${BENCH_NS}.`);
++    return { seedRefs };
++}
++
++// ---------------------------------------------------------------------------
++// Teardown
++// ---------------------------------------------------------------------------
++
++export function teardown(data) {
++    console.log(`Teardown: ${data.seedRefs.length} seed secrets were used.`);
++}
++
++// ---------------------------------------------------------------------------
++// Scenario: auth_only
++//
++// Deliberately calls login() every iteration — this measures Argon2 + token
++// issuance throughput. Expect low req/s; that is intentional and correct.
++// ---------------------------------------------------------------------------
++
++export function authScenario() {
++    const token = login();
++    if (!token) return;
++
++    // Also verify the token works (whoami — JWT validation only, no Argon2)
++    const res = http.get(
++        `${BASE_URL}/v1/auth/whoami`,
++        { headers: authHeaders(token), tags: { name: "auth/whoami" } }
++    );
++    check(res, { "whoami 200": (r) => r.status === 200 });
++    errorRate.add(res.status !== 200);
++}
++
++// ---------------------------------------------------------------------------
++// Scenario: secret_write
++// ---------------------------------------------------------------------------
++
++export function writeScenario() {
++    const token = getToken();
++    if (!token) return;
++
++    const ref = randomRef("write");
++    const res = http.post(
++        `${BASE_URL}/v1/secrets`,
++        JSON.stringify({
++            sec_ref:     ref,
++            value_b64:   b64(`benchmark-secret-${__VU}-${__ITER}`),
++            secret_type: "opaque",
++            description: "k6 benchmark secret",
++            labels:      { bench: "true", vu: String(__VU) },
++        }),
++        { headers: authHeaders(token), tags: { name: "secret/create" } }
++    );
++
++    const ok = check(res, { "create 200": (r) => r.status === 200 });
++    errorRate.add(!ok);
++    createLatency.add(res.timings.duration);
++    if (ok) secretsCreated.add(1);
++}
++
++// ---------------------------------------------------------------------------
++// Scenario: secret_read
++// ---------------------------------------------------------------------------
++
++export function readScenario(data) {
++    const token = getToken();
++    if (!token) return;
++
++    // Pick a seed secret pseudo-randomly (deterministic per VU+iter for reproducibility)
++    const idx = (__VU * 7 + __ITER * 13) % data.seedRefs.length;
++    const ref  = data.seedRefs[idx];
++
++    const res = http.post(
++        `${BASE_URL}/v1/secrets/reveal`,
++        JSON.stringify({ sec_ref: ref }),
++        { headers: authHeaders(token), tags: { name: "secret/reveal" } }
++    );
++
++    const ok = check(res, {
++        "reveal 200": (r) => r.status === 200,
++        "reveal has value": (r) => {
++            try { return JSON.parse(r.body).data.value_b64 !== undefined; }
++            catch (_) { return false; }
++        },
++    });
++    errorRate.add(!ok);
++    revealLatency.add(res.timings.duration);
++}
++
++// ---------------------------------------------------------------------------
++// Scenario: secret_search
++// ---------------------------------------------------------------------------
++
++export function searchScenario() {
++    const token = getToken();
++    if (!token) return;
++
++    const res = http.post(
++        `${BASE_URL}/v1/secrets/search`,
++        JSON.stringify({
++            scope: { namespace_prefixes: [BENCH_NS] },
++            page:  { limit: 20, offset: 0 },
++        }),
++        { headers: authHeaders(token), tags: { name: "secret/search" } }
++    );
++
++    const ok = check(res, { "search 200": (r) => r.status === 200 });
++    errorRate.add(!ok);
++    searchLatency.add(res.timings.duration);
++}
++
++// ---------------------------------------------------------------------------
++// Scenario: mixed — realistic workload (10% create, 60% reveal, 30% search)
++// ---------------------------------------------------------------------------
++
++export function mixedScenario(data) {
++    const token = getToken();
++    if (!token) return;
++
++    const roll = Math.random();
++
++    if (roll < 0.10) {
++        // Create
++        const ref = randomRef("mixed");
++        const res = http.post(
++            `${BASE_URL}/v1/secrets`,
++            JSON.stringify({
++                sec_ref:     ref,
++                value_b64:   b64(`mixed-${__VU}-${__ITER}`),
++                secret_type: "opaque",
++                labels:      { bench: "true" },
++            }),
++            { headers: authHeaders(token), tags: { name: "secret/create" } }
++        );
++        const ok = check(res, { "mixed create 200": (r) => r.status === 200 });
++        errorRate.add(!ok);
++        createLatency.add(res.timings.duration);
++        if (ok) secretsCreated.add(1);
++
++    } else if (roll < 0.70) {
++        // Reveal
++        const idx = (__VU * 7 + __ITER * 13) % data.seedRefs.length;
++        const res = http.post(
++            `${BASE_URL}/v1/secrets/reveal`,
++            JSON.stringify({ sec_ref: data.seedRefs[idx] }),
++            { headers: authHeaders(token), tags: { name: "secret/reveal" } }
++        );
++        const ok = check(res, { "mixed reveal 200": (r) => r.status === 200 });
++        errorRate.add(!ok);
++        revealLatency.add(res.timings.duration);
++
++    } else {
++        // Search
++        const res = http.post(
++            `${BASE_URL}/v1/secrets/search`,
++            JSON.stringify({
++                scope: { namespace_prefixes: [BENCH_NS] },
++                page:  { limit: 20, offset: 0 },
++            }),
++            { headers: authHeaders(token), tags: { name: "secret/search" } }
++        );
++        const ok = check(res, { "mixed search 200": (r) => r.status === 200 });
++        errorRate.add(!ok);
++        searchLatency.add(res.timings.duration);
++    }
++
++    sleep(0.1); // small think-time to avoid hammering in mixed scenario
++}
+diff --git a/reset_db.sh b/reset_db.sh
+deleted file mode 100755
+index 11e9043..0000000
+--- a/reset_db.sh
++++ /dev/null
+@@ -1,12 +0,0 @@
+-#!/bin/sh
+-
+-set -e 
+-
+-export DATABASE_URL="postgresql://hierarkey:hierarkey@localhost/hierarkey"
+-
+-~/.cargo/bin/sqlx database drop -y -f
+-~/.cargo/bin/sqlx database create
+-cargo run --bin hierarkey update-migrations --yes
+-
+-cargo run --bin hierarkey bootstrap-master-key --usage wrap_kek --provider passphrase --insecure-passphrase masterkeypassphrase
+-cargo run --bin hierarkey bootstrap-admin-account --name admin --insecure-password adminadminadmin --no-pwd-change
+diff --git a/hkey-demo-flow.sh b/scripts/hkey-demo-flow.sh
+similarity index 100%
+rename from hkey-demo-flow.sh
+rename to scripts/hkey-demo-flow.sh
+diff --git a/hkey-populate.sh b/scripts/hkey-populate.sh
+similarity index 100%
+rename from hkey-populate.sh
+rename to scripts/hkey-populate.sh
+diff --git a/hkey-test-suite.sh b/scripts/hkey-test-suite.sh
+similarity index 100%
+rename from hkey-test-suite.sh
+rename to scripts/hkey-test-suite.sh
+diff --git a/hkey_bash_funcs.sh b/scripts/hkey_bash_funcs.sh
+similarity index 100%
+rename from hkey_bash_funcs.sh
+rename to scripts/hkey_bash_funcs.sh
+diff --git a/scripts/login.sh b/scripts/login.sh
+new file mode 100755
+index 0000000..5752949
+--- /dev/null
++++ b/scripts/login.sh
+@@ -0,0 +1,12 @@
++#!/bin/sh
++set -e
++
++cd ..
++
++HKEY=./target/release/hkey
++
++# Login
++HKEY_ACCESS_TOKEN=$($HKEY auth login --name admin --insecure-password adminadminadmin --json | jq .access_token -r)
++
++# Unlock master root key
++$HKEY masterkey unlock --name root --insecure-passphrase masterkeypassphrase
+diff --git a/scripts/reset_db.sh b/scripts/reset_db.sh
+new file mode 100755
+index 0000000..acce867
+--- /dev/null
++++ b/scripts/reset_db.sh
+@@ -0,0 +1,20 @@
++#!/bin/sh
++
++set -e
++
++cd ..
++
++export DATABASE_URL="postgresql://hierarkey:hierarkey@localhost/hierarkey"
++
++cargo build --release --all
++
++#HKEY=./target/release/hkey
++HIERARKEY=./target/release/hierarkey
++CONFIG="--config ./hierarkey-config.toml"
++
++~/.cargo/bin/sqlx database drop -y -f
++~/.cargo/bin/sqlx database create
++$HIERARKEY update-migrations $CONFIG --yes
++
++$HIERARKEY bootstrap-master-key $CONFIG --usage wrap_kek --provider passphrase --insecure-passphrase masterkeypassphrase
++$HIERARKEY bootstrap-admin-account  $CONFIG --name admin --insecure-password adminadminadmin --no-pwd-change
+diff --git a/scripts/run-benchmark.sh b/scripts/run-benchmark.sh
+new file mode 100755
+index 0000000..47622ae
+--- /dev/null
++++ b/scripts/run-benchmark.sh
+@@ -0,0 +1,289 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++if [ -z "./hierarkey-config.toml" ]; then
++  echo "Error: hierarkey-config.toml not found in current directory." >&2
++  exit 1
++fi
++
++if [ -z "./target/release" ]; then
++  echo "Error: target/release directory not found. Please build the project first." >&2
++  exit 1
++fi
++
++
++# cd ..
++#
++#export HKEY_URL=http://localhost:9090
++#export HKEY_ADMIN_USER=admin
++#export HKEY_ADMIN_PASS=adminadminadmin
++#
++#k6 run --out json=./results.json ./bench/benchmark.js
++
++# -----------------------------------------------------------------------------
++# Configuration
++# -----------------------------------------------------------------------------
++
++ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++PROJECT_DIR="$(cd "${ROOT_DIR}/.." && pwd)"
++
++BENCH_SCRIPT="${PROJECT_DIR}/bench/benchmark.js"
++RESULTS_BASE_DIR="${PROJECT_DIR}/benchmark-results"
++TMP_DIR="${PROJECT_DIR}/.bench-tmp"
++
++LABEL="${1:-baseline}"
++TIMESTAMP="$(date -u +'%Y-%m-%dT%H-%M-%SZ')"
++RUN_DIR="${RESULTS_BASE_DIR}/${TIMESTAMP}-${LABEL}"
++
++RESULTS_JSON="${RUN_DIR}/results.json"
++RUN_LOG="${RUN_DIR}/run.log"
++SUMMARY_TXT="${RUN_DIR}/summary.txt"
++NOTES_TXT="${RUN_DIR}/notes.txt"
++
++# Optional config locations to archive if they exist
++APP_CONFIG_FILES=(
++  "${PROJECT_DIR}/hierarkey-config.toml"
++)
++
++# Optional extra benchmark-related files to archive if they exist
++BENCH_FILES=(
++  "${PROJECT_DIR}/benchmark/benchmark.js"
++  "${ROOT_DIR}/scripts/bench-it.sh"
++)
++
++# -----------------------------------------------------------------------------
++# Helpers
++# -----------------------------------------------------------------------------
++
++log() {
++  printf '[bench-it] %s\n' "$*"
++}
++
++have_cmd() {
++  command -v "$1" >/dev/null 2>&1
++}
++
++copy_if_exists() {
++  local src="$1"
++  local dst_dir="$2"
++
++  if [[ -f "$src" ]]; then
++    cp -f "$src" "$dst_dir/"
++  fi
++}
++
++sanitize_env_file() {
++  local src="$1"
++  local dst="$2"
++
++  if [[ ! -f "$src" ]]; then
++    return 0
++  fi
++
++  sed -E \
++    -e 's/^(.*(SECRET|TOKEN|PASSWORD|PASS|KEY)=).*/\1[REDACTED]/I' \
++    -e 's/^(DATABASE_URL=).*/\1[REDACTED]/I' \
++    "$src" > "$dst"
++}
++
++extract_summary() {
++  local log_file="$1"
++  local out_file="$2"
++
++  {
++    echo "Benchmark run summary"
++    echo "====================="
++    echo
++    echo "Timestamp (UTC): ${TIMESTAMP}"
++    echo "Label: ${LABEL}"
++    echo
++
++    echo "Git"
++    echo "---"
++    git -C "${PROJECT_DIR}" rev-parse HEAD 2>/dev/null | sed 's/^/commit: /' || true
++    git -C "${PROJECT_DIR}" branch --show-current 2>/dev/null | sed 's/^/branch: /' || true
++    if git -C "${PROJECT_DIR}" diff --quiet && git -C "${PROJECT_DIR}" diff --cached --quiet; then
++      echo "dirty: no"
++    else
++      echo "dirty: yes"
++    fi
++    echo
++
++    echo "Extracted k6 metrics"
++    echo "--------------------"
++    grep -E 'Setup complete|Teardown:|checks_total|checks_succeeded|checks_failed|hierarkey_auth_latency|hierarkey_create_latency|hierarkey_error_rate|hierarkey_reveal_latency|hierarkey_search_latency|http_req_duration|http_req_failed|http_reqs|iterations' "$log_file" || true
++    echo
++  } > "$out_file"
++}
++
++# -----------------------------------------------------------------------------
++# Prepare directories
++# -----------------------------------------------------------------------------
++
++mkdir -p "$RUN_DIR"
++mkdir -p "${RUN_DIR}/benchmark"
++mkdir -p "${RUN_DIR}/source"
++mkdir -p "${RUN_DIR}/config"
++mkdir -p "${RUN_DIR}/system"
++mkdir -p "${TMP_DIR}"
++
++log "Run directory: ${RUN_DIR}"
++
++# -----------------------------------------------------------------------------
++# Archive benchmark files
++# -----------------------------------------------------------------------------
++
++for f in "${BENCH_FILES[@]}"; do
++  copy_if_exists "$f" "${RUN_DIR}/benchmark"
++done
++
++cat > "${RUN_DIR}/benchmark/scenario.txt" <<EOF
++Benchmark script: ${BENCH_SCRIPT}
++Label: ${LABEL}
++
++This file is intended for human notes about:
++- scenario definitions
++- thresholds
++- expected namespace
++- seed count
++- auth mode
++Update this file manually or generate it from your benchmark config if desired.
++EOF
++
++# -----------------------------------------------------------------------------
++# Archive git/source metadata
++# -----------------------------------------------------------------------------
++
++if have_cmd git; then
++  {
++    echo "repo: ${PROJECT_DIR}"
++    echo "branch: $(git -C "${PROJECT_DIR}" branch --show-current 2>/dev/null || echo unknown)"
++    echo "commit: $(git -C "${PROJECT_DIR}" rev-parse HEAD 2>/dev/null || echo unknown)"
++    if git -C "${PROJECT_DIR}" diff --quiet && git -C "${PROJECT_DIR}" diff --cached --quiet; then
++      echo "dirty: no"
++    else
++      echo "dirty: yes"
++    fi
++  } > "${RUN_DIR}/source/git.txt"
++
++  git -C "${PROJECT_DIR}" status --short > "${RUN_DIR}/source/git-status.txt" 2>/dev/null || true
++  git -C "${PROJECT_DIR}" diff > "${RUN_DIR}/source/git-diff.patch" 2>/dev/null || true
++  git -C "${PROJECT_DIR}" diff --cached > "${RUN_DIR}/source/git-diff-staged.patch" 2>/dev/null || true
++fi
++
++# -----------------------------------------------------------------------------
++# Archive config
++# -----------------------------------------------------------------------------
++
++for f in "${APP_CONFIG_FILES[@]}"; do
++  if [[ -f "$f" ]]; then
++    base="$(basename "$f")"
++    if [[ "$base" == ".env" || "$base" == ".env.local" ]]; then
++      sanitize_env_file "$f" "${RUN_DIR}/config/${base}.public"
++    else
++      cp -f "$f" "${RUN_DIR}/config/"
++    fi
++  fi
++done
++
++cat > "${RUN_DIR}/config/dataset.txt" <<EOF
++Fill this in after or during the run if it is not generated automatically.
++
++Suggested contents:
++- namespace used
++- seeded secret count
++- secret size
++- benchmark users/roles
++- database freshness (fresh/reused)
++- migration/schema version
++EOF
++
++# -----------------------------------------------------------------------------
++# Archive system information
++# -----------------------------------------------------------------------------
++
++{
++  echo "date_utc=$(date -u --iso-8601=seconds 2>/dev/null || date -u)"
++  echo "hostname=$(hostname 2>/dev/null || echo unknown)"
++  echo "kernel=$(uname -a 2>/dev/null || echo unknown)"
++  echo
++  if have_cmd lsb_release; then
++    lsb_release -a 2>&1 || true
++    echo
++  fi
++  if have_cmd lscpu; then
++    lscpu || true
++    echo
++  fi
++  if have_cmd free; then
++    free -h || true
++    echo
++  fi
++  if have_cmd df; then
++    df -h || true
++    echo
++  fi
++} > "${RUN_DIR}/system/system.txt"
++
++{
++  echo "k6: $(k6 version 2>/dev/null || echo unavailable)"
++  echo "git: $(git --version 2>/dev/null || echo unavailable)"
++  echo "bash: ${BASH_VERSION}"
++  if have_cmd psql; then
++    echo "psql: $(psql --version 2>/dev/null || echo unavailable)"
++  fi
++  if have_cmd docker; then
++    echo "docker: $(docker --version 2>/dev/null || echo unavailable)"
++  fi
++  if have_cmd kubectl; then
++    echo "kubectl: $(kubectl version --client=true --output=yaml 2>/dev/null | tr '\n' ' ' || echo unavailable)"
++  fi
++} > "${RUN_DIR}/system/versions.txt"
++
++# -----------------------------------------------------------------------------
++# Create notes placeholder
++# -----------------------------------------------------------------------------
++
++cat > "${NOTES_TXT}" <<EOF
++Notes for this run:
++- Purpose:
++- Environment:
++- Namespace:
++- Seed count:
++- Special conditions:
++- Observations:
++EOF
++
++# -----------------------------------------------------------------------------
++# Run benchmark
++# -----------------------------------------------------------------------------
++
++log "Starting benchmark"
++log "Script: ${BENCH_SCRIPT}"
++
++set +e
++k6 run --out "json=${RESULTS_JSON}" "${BENCH_SCRIPT}" 2>&1 | tee "${RUN_LOG}"
++K6_EXIT=${PIPESTATUS[0]}
++set -e
++
++# -----------------------------------------------------------------------------
++# Summarize
++# -----------------------------------------------------------------------------
++
++extract_summary "${RUN_LOG}" "${SUMMARY_TXT}"
++
++cat > "${RUN_DIR}/RESULT.txt" <<EOF
++exit_code=${K6_EXIT}
++status=$([[ ${K6_EXIT} -eq 0 ]] && echo PASS || echo FAIL)
++run_dir=${RUN_DIR}
++EOF
++
++if [[ ${K6_EXIT} -eq 0 ]]; then
++  log "Benchmark completed successfully"
++else
++  log "Benchmark completed with failures (exit code ${K6_EXIT})"
++fi
++
++log "Artifacts stored in: ${RUN_DIR}"
++
++exit "${K6_EXIT}"
+\ No newline at end of file
+diff --git a/testsuite.sh b/testsuite.sh
+deleted file mode 100755
+index e6dadf9..0000000
+--- a/testsuite.sh
++++ /dev/null
+@@ -1,9 +0,0 @@
+-#!/bin/sh
+-
+-psql -h postgres -U hierarkey -d postgres -c 'DROP DATABASE IF EXISTS hierarkey_test WITH FORCE;'
+-psql -h postgres -U hierarkey -d postgres -c 'CREATE DATABASE hierarkey_test;'
+-
+-./target/release/hierarkey upgrade-migrations -c hierarkey-config.test.toml --yes
+-./target/release/hierarkey check-migrations -c hierarkey-config.test.toml
+-./target/release/hierarkey bootstrap-admin-account -c hierarkey-config.test.toml --username admin --insecure-password admin_test_password
+-./target/release/hierarkey serve -c hierarkey-config.test.toml

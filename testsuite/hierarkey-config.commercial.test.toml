@@ -1,0 +1,47 @@
+[logging]
+level = "info,hierarkey_server=trace,sqlx=trace"
+log_file = "data/hierarkey-commercial.log"
+
+[database]
+url = "postgres://hierarkey:hierarkey@localhost:5433/hierarkey_test"
+max_connections = 10
+min_connections = 2
+idle_timeout = 600
+max_lifetime = 1800
+acquire_timeout = 30
+
+[database.tls]
+enabled = false
+
+[server]
+mode = "http"
+bind_address = "127.0.0.1:8080"
+allow_insecure_http = true
+
+[masterkey]
+default_backend = "file"
+default_file_type = "passphrase"
+allow_insecure_masterkey = true
+
+[masterkey.file]
+enabled = true
+allowed_types = ["passphrase"]
+path = "data/master-keys"
+file_mode = "0600"
+dir_mode = "0700"
+owner = "hierarkey"
+group = "hierarkey"
+
+[masterkey.pkcs11]
+enabled = false
+
+[auth]
+allow_passphrase_auth = true
+allow_ed25519_auth = true
+allow_mtls_auth = false
+audience = "hierarkey-server"
+access_token_ttl_seconds = 900      # 15 minutes
+refresh_token_ttl_seconds = 604800  # 7 days
+
+[metrics]
+enabled = false

@@ -1,0 +1,95 @@
+name: Integration Tests
+on:
+  push:
+    branches: [main]
+env:
+  CARGO_TERM_COLOR: always
+jobs:
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hierarkey
+          POSTGRES_PASSWORD: hierarkey
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build release binaries
+        run: cargo build --release
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Poetry
+        run: pipx install poetry
+      - name: Install test dependencies
+        working-directory: testsuite/test-suite
+        run: poetry install --no-root
+      - name: Create test database
+        env:
+          PGPASSWORD: hierarkey
+        run: psql -h localhost -U hierarkey -d postgres -c 'CREATE DATABASE hierarkey_test;'
+      - name: Run migrations
+        working-directory: testsuite
+        run: |
+          ../target/release/hierarkey update-migrations -c hierarkey-config.test.toml --yes
+          ../target/release/hierarkey check-migrations  -c hierarkey-config.test.toml
+      - name: Bootstrap server
+        working-directory: testsuite
+        run: |
+          mkdir -p data
+          ../target/release/hierarkey bootstrap-master-key -c hierarkey-config.test.toml --usage wrap_kek --provider insecure
+          ../target/release/hierarkey bootstrap-admin-account -c hierarkey-config.test.toml --name admin --insecure-password admin_test_password --no-pwd-change
+      - name: Start server
+        working-directory: testsuite
+        run: ../target/release/hierarkey serve -c hierarkey-config.test.toml &
+      - name: Wait for server to be ready
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/healthz; then
+              echo "Server is ready"
+              exit 0
+            fi
+            echo "Waiting for server... ($i/30)"
+            sleep 1
+          done
+          echo "Server did not become ready in time"
+          exit 1
+      - name: Install CI license
+        working-directory: testsuite
+        env:
+          HIERARKEY_CI_LICENSE_JSON: ${{ secrets.HIERARKEY_CI_LICENSE_JSON }}
+        run: |
+          if [ -z "$HIERARKEY_CI_LICENSE_JSON" ]; then
+            echo "Error: HIERARKEY_CI_LICENSE_JSON secret is not set." >&2
+            echo "Generate a license with hkey-license and store the JSON as a repository secret." >&2
+            exit 1
+          fi
+          echo "$HIERARKEY_CI_LICENSE_JSON" > data/hierarkey-ci-integration-license.json
+          ADMIN_TOKEN=$(../target/release/hkey --server http://localhost:8080 \
+            auth login --name admin --insecure-password admin_test_password --json \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+          ../target/release/hkey --server http://localhost:8080 --token "$ADMIN_TOKEN" \
+            license set --from-file data/hierarkey-ci-integration-license.json
+          echo "CI license installed."
+      - name: Run integration tests
+        working-directory: testsuite/test-suite
+        env:
+          HKEY_TEST_HKEY_BIN: ../../target/release/hkey
+          HKEY_TEST_HKEY_SERVER_URL: http://localhost:8080
+        run: poetry run pytest -v
+      - name: Upload server log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: server-log
+          path: testsuite/data/hierarkey.log

@@ -1,0 +1,6 @@
+exit_code=0
+status=PASS
+run_dir=/home/jthijssen/code/hierarkey/hierarkey/benchmark/results/2026-03-15T13-23-32Z-second_time
+results_file=/home/jthijssen/code/hierarkey/hierarkey/benchmark/results/2026-03-15T13-23-32Z-second_time/results.json.gz
+run_log=/home/jthijssen/code/hierarkey/hierarkey/benchmark/results/2026-03-15T13-23-32Z-second_time/run.log
+summary_file=/home/jthijssen/code/hierarkey/hierarkey/benchmark/results/2026-03-15T13-23-32Z-second_time/summary.txt

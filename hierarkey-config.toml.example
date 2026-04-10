@@ -1,0 +1,294 @@
+###############################################
+# Logging Configuration
+###############################################
+[logging]
+# Global logging level for the entire application.
+# Format: "<LEVEL>[,module=LEVEL,...]"
+# Common levels: error, warn, info, debug, trace
+
+level = "info"
+
+# A more detailed example:
+# - "info" globally
+# - "trace" for hierarkey_server
+# - "warn" for sqlx to suppress repetitive SQL info logs
+# level = "info,hierarkey_server=trace,sqlx=warn"
+
+# If you want only errors, uncomment:
+#level = "error"
+
+# Optional: Log to a file instead of stdout.
+# Make sure the directory exists and the process can write to it.
+#log_file = "data/hierarkey.log"
+
+
+###############################################
+# Database Configuration
+###############################################
+[database]
+# PostgreSQL connection URL.
+# Use a dedicated user with strong credentials.
+# Example formats:
+#   postgres://user:password@host:port/dbname
+#   postgresql://user:password@localhost:5432/dbname
+#   postgresql://user:password@/unix_socket_path/dbname
+url = "postgres://dbuser:strong_password@localhost:5432/dbname"
+
+# Maximum number of connections in the pool.
+# Higher values allow more concurrent queries but consume more resources.
+max_connections = 10
+
+# Minimum number of idle connections to maintain in the pool.
+# Keeping idle connections reduces latency for new queries.
+# Set to 0 to allow the pool to shrink to zero connections.
+min_connections = 2
+
+# Idle timeout in seconds.
+# Connections idle longer than this will be closed to free resources.
+# Set to 0 to disable idle timeout (connections never close due to inactivity).
+idle_timeout = 600
+
+# Maximum connection lifetime in seconds.
+# Connections older than this will be closed and recreated.
+# Helps prevent issues with stale connections and memory leaks.
+# Set to 0 to disable lifetime limits.
+max_lifetime = 1800
+
+# Acquire timeout in seconds.
+# Maximum time to wait when acquiring a connection from the pool.
+# If all connections are busy, requests will wait up to this duration.
+acquire_timeout = 30
+
+[database.tls]
+# Enable TLS/SSL for database connections.
+# Strongly recommended for production environments and remote connections.
+# When disabled, all data is transmitted in plaintext.
+enabled = true
+
+# Path to the Certificate Authority (CA) certificate file.
+# Used to verify the database server's identity.
+# Required when verify_server is true.
+# Obtain this from your database administrator or cloud provider.
+# Example: "/etc/ssl/certs/db-ca-certificate.pem"
+ca_cert_path = "/path/to/ca-certificate.pem"
+
+# Path to the client certificate file (optional).
+# Required only if the database server enforces mutual TLS (mTLS).
+# This proves your identity to the database server.
+# Leave empty or comment out if not using client certificates.
+# Example: "/etc/ssl/certs/client-certificate.pem"
+client_cert_path = "/path/to/client-certificate.pem"
+
+# Path to the client private key file (optional).
+# Required only if using client certificates (mutual TLS).
+# Must correspond to the client_cert above.
+# Keep this file secure with restricted permissions (chmod 600).
+# Example: "/etc/ssl/private/client-key.pem"
+client_key_path = "/path/to/client-key.pem"
+
+# Verify the database server's certificate against the CA.
+# When true, the connection will fail if the certificate is invalid or untrusted.
+# Always set to true in production to prevent man-in-the-middle attacks.
+# Only set to false for local development with self-signed certificates.
+verify_server = true
+
+# Explicit opt-in required before accept_invalid_certs or accept_invalid_hostnames
+# are honoured.  Both flags are silently ignored (and rejected at startup) unless
+# this is set to true.  Never enable in production.
+allow_insecure_tls = false
+
+# Accept invalid or self-signed certificates (NOT RECOMMENDED FOR PRODUCTION).
+# Requires allow_insecure_tls = true.  When active, certificate validation is
+# bypassed entirely — the server will accept any certificate.
+accept_invalid_certs = false
+
+# Accept hostname mismatches in certificates (NOT RECOMMENDED FOR PRODUCTION).
+# Requires allow_insecure_tls = true.  When active, the certificate hostname is
+# not checked against the connection URL (uses verify-ca mode instead of verify-full).
+accept_invalid_hostnames = false
+
+
+###############################################
+# Server Configuration
+###############################################
+[server]
+# Server mode: "tls" or "http"
+# Use **tls** in all production environments.
+mode = "tls"
+
+# Bind address and port for the API server.
+# Use a TLS-enabled port when mode="tls".
+bind_address = "127.0.0.1:8443" # TLS mode
+#bind_address = "127.0.0.1:8080" # HTTP (insecure) mode
+
+# Paths to TLS certificate and private key.
+# Required when mode = "tls".
+cert_path = "data/server/cert.pem"
+key_path = "data/server/key.pem"
+
+# Safety lock for running over plain HTTP.
+# You MUST explicitly set this to true if you want to expose insecure HTTP endpoints.
+# This prevents accidental insecure startup.
+allow_insecure_http = false
+
+
+###############################################
+# Masterkey Configuration
+###############################################
+# Master keys are root keys used to protect other critical keys and integrity signals.
+#
+# Currently used for:
+# - wrap_kek: wraps/unwraps KEKs stored in the database
+#
+# Master keys are stored using the file backend (passphrase-protected or insecure/dev).
+# HSM / PKCS#11 backend support is available in the Hierarkey Commercial Edition.
+#
+# IMPORTANT:
+# - This config only defines which backends are available and how they are accessed.
+# - The database stores which backend/version was used for each master key version.
+[masterkey]
+# Default backend used when creating new master key versions.
+# Valid values: "file"
+# Note: "pkcs11" (HSM) requires the Hierarkey Commercial Edition.
+default_backend = "file"
+
+# Default file type used when backend="file" and a command does not explicitly select a type.
+# Valid values: "passphrase" (recommended), "insecure" (dev/test only)
+default_file_type = "passphrase"
+
+# Explicit opt-in required before the "insecure" master key provider is permitted.
+# The insecure provider stores the master key in PLAINTEXT on disk — anyone with filesystem
+# access can decrypt all secrets. Only enable this for local development and testing.
+# Must be set to true when default_file_type = "insecure" or allowed_types includes "insecure".
+# Never enable in production.
+allow_insecure_masterkey = false
+
+[masterkey.file]
+# Enable the file backend. When enabled, the server can create/use master keys stored on disk.
+# NOTE: Keep this enabled during migrations (e.g. when rewrapping from a file-based v1 to an HSM-based v2).
+enabled = true
+
+# Which file-based master key types are allowed on this server.
+# - "passphrase": key file contains an encrypted master key (KDF params included); passphrase is required to use it
+# - "insecure": key file contains a master key without passphrase protection (development/testing only)
+allowed_types = ["insecure", "passphrase"]
+
+# Directory where master key files are stored.
+# The server will create this directory if it does not exist.
+# RECOMMENDED (production): use an absolute path outside the binary dir, e.g. "/var/lib/hierarkey/master-keys"
+path = "data/master-keys"
+
+# Permissions for newly created master key files.
+# This should be restrictive: readable/writable only by the hierarkey service user.
+# Format: string octal (e.g. "0600")
+file_mode = "0600"
+
+# Permissions for the master key directory (and created subdirectories).
+# This should be restrictive: accessible only by the hierarkey service user.
+# Format: string octal (e.g. "0700")
+dir_mode = "0700"
+
+# Optional: enforce ownership after creating files/dirs (Linux/Unix only).
+# If omitted, the server will leave ownership as the running process user/group.
+owner = "hierarkey"
+group = "hierarkey"
+
+
+# HSM / PKCS#11 masterkey backend is available in the Hierarkey Commercial Edition.
+# See https://hierarkey.com/commercial for more information.
+
+[auth]
+# Logical audience for this Hierarkey deployment
+audience = "hierarkey-server"
+
+# Which service account authentication methods are allowed
+allow_passphrase_auth = false
+allow_ed25519_auth = true
+# allow_mtls_auth: mTLS client certificate authentication is only available in the
+# Hierarkey Commercial Edition. This setting has no effect in the community edition.
+
+# Token lifetimes
+access_token_ttl_seconds = 900      # 15 minutes
+refresh_token_ttl_seconds = 604800  # 7 days
+
+# Brute-force protection: how many consecutive failed logins before the account
+# is temporarily locked, and for how long.
+max_failed_login_attempts = 10
+lockout_duration_minutes = 15
+
+###############################################
+# Security Headers Configuration
+###############################################
+[security_headers]
+# Emit security headers on every response (default: true).
+# Disabling this is not recommended in production.
+enabled = true
+
+# Strict-Transport-Security (HSTS) — instructs browsers to always use HTTPS.
+# Automatically suppressed when the server runs in HTTP mode regardless of this setting.
+hsts_enabled = true
+
+# How long (seconds) browsers should enforce HTTPS-only connections.
+# Default: 31536000 (1 year). Set hsts_enabled = false rather than lowering this.
+hsts_max_age_seconds = 31536000
+
+# Extend HSTS enforcement to all subdomains of this host.
+hsts_include_subdomains = true
+
+# Include the preload directive — only set this if you intend to submit
+# your domain to the HSTS preload list (https://hstspreload.org).
+hsts_preload = false
+
+
+###############################################
+# CORS Configuration
+###############################################
+[cors]
+# Enable CORS headers (default: disabled).
+# Only needed when a browser-based client (web UI, SPA) calls the API directly
+# from a different origin. Server-to-server calls and the CLI are unaffected.
+enabled = false
+
+# List of origins that are explicitly allowed to make cross-origin requests.
+# Each entry must be a full origin: scheme + host + optional port.
+# Example: ["https://admin.example.com", "https://app.example.com"]
+allowed_origins = []
+
+# Allow ANY origin (Access-Control-Allow-Origin: *).
+# This is dangerous for a secrets manager — any website could make requests
+# on behalf of a logged-in user. Requires explicit opt-in here AND enabled = true.
+allow_any_origin = false
+
+# How long (seconds) browsers may cache preflight responses.
+# Reduces the number of OPTIONS requests for active users.
+max_age_seconds = 3600
+
+
+###############################################
+# Rate Limiting Configuration
+###############################################
+[rate_limit]
+# Enable IP-based rate limiting on auth endpoints (login, token, refresh).
+# Helps prevent brute-force attacks from a single IP address.
+# This is complementary to the per-account lockout configured in [auth].
+enabled = false
+
+# Maximum sustained login attempts per minute per IP address.
+# After the burst is consumed, requests are admitted at this rate.
+auth_requests_per_minute = 20
+
+# Initial burst capacity per IP — how many requests are allowed immediately
+# before rate limiting kicks in.
+auth_burst_size = 5
+
+
+###############################################
+# Metrics Configuration (Commercial Edition)
+###############################################
+# The Prometheus /metrics endpoint is available in the Hierarkey Commercial Edition.
+# The community edition compiles and runs the metrics crate as a no-op facade.
+# Settings in this section are ignored by the community binary.
+#
+#[metrics]
+#enabled = false
+#allowed_ips = ["127.0.0.1", "::1"]

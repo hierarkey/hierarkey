@@ -1,0 +1,100 @@
+diff --git a/scripts/hkey-populate.sh b/scripts/hkey-populate.sh
+index 17c74af..1dcbb22 100755
+--- a/scripts/hkey-populate.sh
++++ b/scripts/hkey-populate.sh
+@@ -9,17 +9,27 @@
+ #   HKEY_SELF_SIGNED     set to "true" to accept self-signed TLS
+ #   HKEY_MASTERKEY_PASS  passphrase for the root master key
+ #   HKEY_ADMIN_PASS      admin user password
+-#   HKEY_BIN             path to hkey binary (default: ./target/debug/hkey)
++#   HKEY_BIN             path to hkey binary (default: ./target/release/hkey)
+ #
+ # The script is fully idempotent: re-running it is safe.
+ set -euo pipefail
+ 
++if [ -z "./hierarkey-config.toml" ]; then
++  echo "Error: hierarkey-config.toml not found in current directory." >&2
++  exit 1
++fi
++
++if [ -z "./target/release" ]; then
++  echo "Error: target/release directory not found. Please build the project first." >&2
++  exit 1
++fi
++
+ # ─── Config ──────────────────────────────────────────────────────────────────
+ SERVER_URL="${HKEY_SERVER_URL:-http://127.0.0.1:9090}"
+ SELF_SIGNED="${HKEY_SELF_SIGNED:-false}"
+ MASTERKEY_PASS="${HKEY_MASTERKEY_PASS:-masterkeypassphrase}"
+ ADMIN_PASS="${HKEY_ADMIN_PASS:-adminadminadmin}"
+-HKEY_BIN="${HKEY_BIN:-./target/debug/hkey}"
++HKEY_BIN="${HKEY_BIN:-./target/release/hkey}"
+ KEYDIR="${KEYDIR:-./.hkey-populate-keys}"
+ 
+ # ─── Base command array ───────────────────────────────────────────────────────
+diff --git a/scripts/login.sh b/scripts/login.sh
+index 5752949..508763e 100755
+--- a/scripts/login.sh
++++ b/scripts/login.sh
+@@ -1,7 +1,15 @@
+ #!/bin/sh
+ set -e
+ 
+-cd ..
++if [ -z "./hierarkey-config.toml" ]; then
++  echo "Error: hierarkey-config.toml not found in current directory." >&2
++  exit 1
++fi
++
++if [ -z "./target/release" ]; then
++  echo "Error: target/release directory not found. Please build the project first." >&2
++  exit 1
++fi
+ 
+ HKEY=./target/release/hkey
+ 
+diff --git a/scripts/reset_db.sh b/scripts/reset_db.sh
+index acce867..eeb194f 100755
+--- a/scripts/reset_db.sh
++++ b/scripts/reset_db.sh
+@@ -2,7 +2,15 @@
+ 
+ set -e
+ 
+-cd ..
++if [ -z "./hierarkey-config.toml" ]; then
++  echo "Error: hierarkey-config.toml not found in current directory." >&2
++  exit 1
++fi
++
++if [ -z "./target/release" ]; then
++  echo "Error: target/release directory not found. Please build the project first." >&2
++  exit 1
++fi
+ 
+ export DATABASE_URL="postgresql://hierarkey:hierarkey@localhost/hierarkey"
+ 
+diff --git a/scripts/run-benchmark.sh b/scripts/run-benchmark.sh
+index 47622ae..672322d 100755
+--- a/scripts/run-benchmark.sh
++++ b/scripts/run-benchmark.sh
+@@ -17,7 +17,7 @@ fi
+ #export HKEY_URL=http://localhost:9090
+ #export HKEY_ADMIN_USER=admin
+ #export HKEY_ADMIN_PASS=adminadminadmin
+-#
++#f
+ #k6 run --out json=./results.json ./bench/benchmark.js
+ 
+ # -----------------------------------------------------------------------------
+@@ -27,8 +27,8 @@ fi
+ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ PROJECT_DIR="$(cd "${ROOT_DIR}/.." && pwd)"
+ 
+-BENCH_SCRIPT="${PROJECT_DIR}/bench/benchmark.js"
+-RESULTS_BASE_DIR="${PROJECT_DIR}/benchmark-results"
++BENCH_SCRIPT="${PROJECT_DIR}/benchmark/benchmark.js"
++RESULTS_BASE_DIR="${PROJECT_DIR}/benchmark/results"
+ TMP_DIR="${PROJECT_DIR}/.bench-tmp"
+ 
+ LABEL="${1:-baseline}"

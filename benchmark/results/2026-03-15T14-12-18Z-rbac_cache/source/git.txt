@@ -1,0 +1,4 @@
+repo: /home/jthijssen/code/hierarkey/hierarkey
+branch: rbac-cache
+commit: 25715abd880f408c220f8b7482daf6d9258dd07c
+dirty: yes

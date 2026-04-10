@@ -1,0 +1,9 @@
+Fill this in after or during the run if it is not generated automatically.
+
+Suggested contents:
+- namespace used
+- seeded secret count
+- secret size
+- benchmark users/roles
+- database freshness (fresh/reused)
+- migration/schema version
