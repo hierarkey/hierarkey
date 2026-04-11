@@ -7,6 +7,7 @@ use crate::manager::rbac::rule::Rule;
 use crate::rbac::Permission;
 use crate::rbac::spec::RuleSpec;
 use crate::rbac::{RbacAllowedRequest, RbacAllowedResponse, RbacExplainResponse, RbacResource, RoleId, RuleId};
+use hierarkey_core::Labels;
 use crate::service::account::AccountId;
 use crate::{RbacManager, ResolveOne};
 use hierarkey_core::error::validation::ValidationError;
@@ -60,6 +61,31 @@ impl RbacService {
                 subject: account_id,
                 permission,
                 resource,
+                resource_labels: Labels::new(),
+            })
+            .await?;
+        Ok(response.allowed)
+    }
+
+    /// Like [`check_permission`] but also passes the resource's labels for `where` condition evaluation.
+    pub async fn check_permission_with_labels(
+        &self,
+        ctx: &CallContext,
+        permission: Permission,
+        resource: RbacResource,
+        resource_labels: Labels,
+    ) -> CkResult<bool> {
+        if ctx.actor.is_system() {
+            return Ok(true);
+        }
+        let account_id = *ctx.actor.require_account_id()?;
+        let response = self
+            .rbac_manager
+            .is_allowed(RbacAllowedRequest {
+                subject: account_id,
+                permission,
+                resource,
+                resource_labels,
             })
             .await?;
         Ok(response.allowed)
@@ -73,11 +99,21 @@ impl RbacService {
         permission: Permission,
         resource: RbacResource,
     ) -> CkResult<()> {
+        self.require_permission_with_labels(ctx, permission, resource, Labels::new()).await
+    }
+
+    /// Like [`require_permission`] but also passes the resource's labels for `where` condition evaluation.
+    pub async fn require_permission_with_labels(
+        &self,
+        ctx: &CallContext,
+        permission: Permission,
+        resource: RbacResource,
+        resource_labels: Labels,
+    ) -> CkResult<()> {
         if ctx.actor.is_system() {
             debug!(
                 request_id = %ctx.request_id,
                 permission = %permission,
-                resource = %resource,
                 resource = %resource,
                 "rbac: system actor — bypassing check"
             );
@@ -90,7 +126,6 @@ impl RbacService {
             account_id = %account_id,
             permission = %permission,
             resource = %resource,
-            resource = %resource,
             "rbac: checking permission"
         );
 
@@ -100,6 +135,7 @@ impl RbacService {
                 subject: account_id,
                 permission,
                 resource: resource.clone(),
+                resource_labels,
             })
             .await?;
 

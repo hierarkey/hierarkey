@@ -3,6 +3,7 @@
 
 use crate::global::uuid_id::Identifier;
 use crate::uuid_id;
+use hierarkey_core::Labels;
 
 mod match_kind;
 mod parser;
@@ -30,9 +31,10 @@ uuid_id!(RoleId, "rol_");
 /// A query to check if a given subject has permissions on resource
 #[derive(Debug, Clone)]
 pub struct RbacAllowedRequest {
-    pub subject: AccountId,     // e.g. who?
-    pub permission: Permission, // e.g. "secret:reveal"
-    pub resource: RbacResource, // e.g. "namespace:prod" or "secret-ref:uuid"
+    pub subject: AccountId,          // e.g. who?
+    pub permission: Permission,      // e.g. "secret:reveal"
+    pub resource: RbacResource,      // e.g. "namespace:prod" or "secret-ref:uuid"
+    pub resource_labels: Labels,     // labels of the target resource, used to evaluate `where` conditions
 }
 
 /// Represents a resource in the RBAC system that permissions can be applied to.
@@ -73,6 +75,7 @@ pub struct RbacAllowedResponse {
 pub enum NearMissReason {
     PermissionMismatch,
     TargetMismatch,
+    ConditionMismatch,
     LostToHigherSpecificity,
 }
 

@@ -1297,6 +1297,7 @@ impl RbacManager {
             .iter()
             .filter(|r| r.spec.permission.grants(request.permission))
             .filter(|r| r.spec.target.matches_request(&request.resource))
+            .filter(|r| r.spec.condition.as_ref().is_none_or(|c| c.evaluate(&request.resource_labels)))
             .map(|r| (r, r.spec.target.specificity_score()))
             .collect();
 
@@ -1381,14 +1382,17 @@ impl RbacManager {
         for rule in &rules {
             let perm_match = rule.spec.permission.grants(request.permission);
             let target_match = rule.spec.target.matches_request(&request.resource);
+            let cond_match = rule.spec.condition.as_ref().is_none_or(|c| c.evaluate(&request.resource_labels));
 
-            if perm_match && target_match {
+            if perm_match && target_match && cond_match {
                 matching.push((rule, rule.spec.target.specificity_score()));
             } else if verbose {
-                let reason = if perm_match {
+                let reason = if !perm_match {
+                    NearMissReason::PermissionMismatch
+                } else if !target_match {
                     NearMissReason::TargetMismatch
                 } else {
-                    NearMissReason::PermissionMismatch
+                    NearMissReason::ConditionMismatch
                 };
                 near_misses.push(RbacNearMiss {
                     rule: rule.clone(),

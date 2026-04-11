@@ -9,6 +9,7 @@ use crate::http_server::auth_user::AuthUser;
 use crate::http_server::extractors::ApiJson;
 use crate::http_server::handlers::ApiResult;
 use crate::rbac::{NearMissReason, RbacAllowedRequest, RbacResource};
+use hierarkey_core::Labels;
 use axum::extract::State;
 use axum::{Extension, Json};
 use hierarkey_core::api::response::ApiResponse;
@@ -88,6 +89,7 @@ pub async fn explain(
                 subject: account.id,
                 permission,
                 resource,
+                resource_labels: Labels::new(),
             },
             req.verbose,
         )
@@ -104,6 +106,7 @@ pub async fn explain(
             reason: match nm.reason {
                 NearMissReason::PermissionMismatch => "permission_mismatch".to_string(),
                 NearMissReason::TargetMismatch => "target_mismatch".to_string(),
+                NearMissReason::ConditionMismatch => "condition_mismatch".to_string(),
                 NearMissReason::LostToHigherSpecificity => "lost_to_higher_specificity".to_string(),
             },
         })
