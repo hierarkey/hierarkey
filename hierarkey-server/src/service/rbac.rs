@@ -7,9 +7,9 @@ use crate::manager::rbac::rule::Rule;
 use crate::rbac::Permission;
 use crate::rbac::spec::RuleSpec;
 use crate::rbac::{RbacAllowedRequest, RbacAllowedResponse, RbacExplainResponse, RbacResource, RoleId, RuleId};
-use hierarkey_core::Labels;
 use crate::service::account::AccountId;
 use crate::{RbacManager, ResolveOne};
+use hierarkey_core::Labels;
 use hierarkey_core::error::validation::ValidationError;
 use hierarkey_core::{CkError, CkResult, Metadata};
 use std::sync::Arc;
@@ -99,7 +99,8 @@ impl RbacService {
         permission: Permission,
         resource: RbacResource,
     ) -> CkResult<()> {
-        self.require_permission_with_labels(ctx, permission, resource, Labels::new()).await
+        self.require_permission_with_labels(ctx, permission, resource, Labels::new())
+            .await
     }
 
     /// Like [`require_permission`] but also passes the resource's labels for `where` condition evaluation.

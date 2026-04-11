@@ -9,9 +9,9 @@ use crate::http_server::auth_user::AuthUser;
 use crate::http_server::extractors::ApiJson;
 use crate::http_server::handlers::ApiResult;
 use crate::rbac::{NearMissReason, RbacAllowedRequest, RbacResource};
-use hierarkey_core::Labels;
 use axum::extract::State;
 use axum::{Extension, Json};
+use hierarkey_core::Labels;
 use hierarkey_core::api::response::ApiResponse;
 use hierarkey_core::api::status::{ApiCode, ApiStatus};
 use hierarkey_core::resources::AccountName;
@@ -108,12 +108,14 @@ pub async fn explain(
             let (reason, condition) = match &nm.reason {
                 NearMissReason::PermissionMismatch => ("permission_mismatch".to_string(), None),
                 NearMissReason::TargetMismatch => ("target_mismatch".to_string(), None),
-                NearMissReason::ConditionMismatch(cond) => {
-                    ("condition_mismatch".to_string(), Some(cond.to_string()))
-                }
+                NearMissReason::ConditionMismatch(cond) => ("condition_mismatch".to_string(), Some(cond.to_string())),
                 NearMissReason::LostToHigherSpecificity => ("lost_to_higher_specificity".to_string(), None),
             };
-            NearMissDto { rule: RuleDto::from(&nm.rule), reason, condition }
+            NearMissDto {
+                rule: RuleDto::from(&nm.rule),
+                reason,
+                condition,
+            }
         })
         .collect();
 

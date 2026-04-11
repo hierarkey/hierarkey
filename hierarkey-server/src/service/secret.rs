@@ -254,8 +254,7 @@ impl SecretService {
                 id: secret_id.to_string(),
             });
         };
-        self.require_on_secret(ctx, Permission::SecretRevise, &secret)
-            .await?;
+        self.require_on_secret(ctx, Permission::SecretRevise, &secret).await?;
 
         // Namespace must be active to create a new revision
         let ns = self
@@ -439,8 +438,7 @@ impl SecretService {
                 id: secret_id.to_string(),
             });
         };
-        self.require_on_secret(ctx, Permission::SecretRestore, &secret)
-            .await?;
+        self.require_on_secret(ctx, Permission::SecretRestore, &secret).await?;
 
         if secret.status != ResourceStatus::Deleted {
             return Err(CkError::Conflict {
@@ -472,8 +470,7 @@ impl SecretService {
                 id: rev.secret_id.to_string(),
             });
         };
-        self.require_on_secret(ctx, Permission::SecretRollback, &secret)
-            .await?;
+        self.require_on_secret(ctx, Permission::SecretRollback, &secret).await?;
 
         // Namespace must be active to change the active revision
         let ns = self
@@ -501,8 +498,7 @@ impl SecretService {
                 id: secret_id.to_string(),
             });
         };
-        self.require_on_secret(ctx, Permission::SecretDelete, &secret)
-            .await?;
+        self.require_on_secret(ctx, Permission::SecretDelete, &secret).await?;
         self.secret_manager
             .set_status(ctx, secret_id, ResourceStatus::Deleted)
             .await

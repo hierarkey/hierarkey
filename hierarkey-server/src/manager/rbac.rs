@@ -1297,7 +1297,12 @@ impl RbacManager {
             .iter()
             .filter(|r| r.spec.permission.grants(request.permission))
             .filter(|r| r.spec.target.matches_request(&request.resource))
-            .filter(|r| r.spec.condition.as_ref().is_none_or(|c| c.evaluate(&request.resource_labels)))
+            .filter(|r| {
+                r.spec
+                    .condition
+                    .as_ref()
+                    .is_none_or(|c| c.evaluate(&request.resource_labels))
+            })
             .map(|r| (r, r.spec.target.specificity_score()))
             .collect();
 
@@ -1382,7 +1387,11 @@ impl RbacManager {
         for rule in &rules {
             let perm_match = rule.spec.permission.grants(request.permission);
             let target_match = rule.spec.target.matches_request(&request.resource);
-            let cond_match = rule.spec.condition.as_ref().is_none_or(|c| c.evaluate(&request.resource_labels));
+            let cond_match = rule
+                .spec
+                .condition
+                .as_ref()
+                .is_none_or(|c| c.evaluate(&request.resource_labels));
 
             if perm_match && target_match && cond_match {
                 matching.push((rule, rule.spec.target.specificity_score()));
@@ -1392,9 +1401,14 @@ impl RbacManager {
                 } else if !target_match {
                     NearMissReason::TargetMismatch
                 } else {
-                    // perm and target matched but condition failed — safe to unwrap since
-                    // cond_match is false only when a condition exists
-                    NearMissReason::ConditionMismatch(rule.spec.condition.clone().unwrap())
+                    // perm and target matched but condition failed — condition must be Some
+                    // because cond_match is only false when a condition exists and evaluates false
+                    NearMissReason::ConditionMismatch(
+                        rule.spec
+                            .condition
+                            .clone()
+                            .expect("condition present when cond_match is false"),
+                    )
                 };
                 near_misses.push(RbacNearMiss {
                     rule: rule.clone(),

@@ -2,11 +2,11 @@
 // Copyright (C) 2025-2026 Joshua Thijssen <jthijssen@hierarkey.com>
 
 use crate::rbac::spec::RuleSpec;
+use crate::rbac::where_::WhereOperator;
 use crate::rbac::{
     AccountPattern, NamespacePattern, Permission, PolicyEffect, SecretPattern, Target, TargetKind, WhereClause,
     WhereExpr,
 };
-use crate::rbac::where_::WhereOperator;
 use nom::error::Error;
 use nom::{
     Finish, IResult, Parser,
@@ -93,11 +93,7 @@ fn is_value_char(c: char) -> bool {
 /// Parse the `[v1,v2,...]` list used by the `in` operator.
 fn parse_in_list(input: &str) -> ParseResult<'_, Vec<String>> {
     map(
-        (
-            char('['),
-            separated_list1(char(','), take_while1(is_value_char)),
-            char(']'),
-        ),
+        (char('['), separated_list1(char(','), take_while1(is_value_char)), char(']')),
         |(_, items, _): (_, Vec<&str>, _)| items.into_iter().map(|s| s.to_string()).collect(),
     )
     .parse(input)
@@ -114,46 +110,52 @@ fn parse_where_clause(input: &str) -> ParseResult<'_, WhereClause> {
 
     // "exists" — no value
     if let Ok((rest, _)) = tag_no_case::<_, _, Error<&str>>("exists").parse(input) {
-        return Ok((rest, WhereClause {
-            key: key.to_string(),
-            operator: WhereOperator::Exists,
-            ..Default::default()
-        }));
+        return Ok((
+            rest,
+            WhereClause {
+                key: key.to_string(),
+                operator: WhereOperator::Exists,
+                ..Default::default()
+            },
+        ));
     }
 
     // "in [v1,v2,...]"
-    if let Ok((rest, values)) = preceded(
-        (tag_no_case("in"), multispace0),
-        parse_in_list,
-    ).parse(input) {
-        return Ok((rest, WhereClause {
-            key: key.to_string(),
-            operator: WhereOperator::In,
-            values,
-            ..Default::default()
-        }));
+    if let Ok((rest, values)) = preceded((tag_no_case("in"), multispace0), parse_in_list).parse(input) {
+        return Ok((
+            rest,
+            WhereClause {
+                key: key.to_string(),
+                operator: WhereOperator::In,
+                values,
+                ..Default::default()
+            },
+        ));
     }
 
     // "!=" value
-    if let Ok((rest, val)) = preceded(
-        tag::<_, _, Error<&str>>("!="),
-        take_while1(is_value_char),
-    ).parse(input) {
-        return Ok((rest, WhereClause {
-            key: key.to_string(),
-            operator: WhereOperator::Ne,
-            value: val.to_string(),
-            ..Default::default()
-        }));
+    if let Ok((rest, val)) = preceded(tag::<_, _, Error<&str>>("!="), take_while1(is_value_char)).parse(input) {
+        return Ok((
+            rest,
+            WhereClause {
+                key: key.to_string(),
+                operator: WhereOperator::Ne,
+                value: val.to_string(),
+                ..Default::default()
+            },
+        ));
     }
 
     // "=" value (default)
     let (rest, val) = preceded(char('='), take_while1(is_value_char)).parse(input)?;
-    Ok((rest, WhereClause {
-        key: key.to_string(),
-        value: val.to_string(),
-        ..Default::default()
-    }))
+    Ok((
+        rest,
+        WhereClause {
+            key: key.to_string(),
+            value: val.to_string(),
+            ..Default::default()
+        },
+    ))
 }
 
 /// Parse optional where expression: "where <clause> [and <clause> ...]"
@@ -467,9 +469,8 @@ mod tests {
 
     #[test]
     fn test_parse_rule_mixed_operators() {
-        let rule =
-            parse_rule_spec("allow secret:reveal to namespace /prod where env in [prod,staging] and tier!=free")
-                .unwrap();
+        let rule = parse_rule_spec("allow secret:reveal to namespace /prod where env in [prod,staging] and tier!=free")
+            .unwrap();
         let cond = rule.condition.unwrap();
         assert_eq!(cond.clauses.len(), 2);
         assert_eq!(cond.clauses[0].operator, WhereOperator::In);

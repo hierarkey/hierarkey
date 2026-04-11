@@ -78,7 +78,12 @@ impl WhereExpr {
 
 impl std::fmt::Display for WhereExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let clauses_str = self.clauses.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(" and ");
+        let clauses_str = self
+            .clauses
+            .iter()
+            .map(|c| c.to_string())
+            .collect::<Vec<_>>()
+            .join(" and ");
         write!(f, "{clauses_str}")
     }
 }
@@ -92,7 +97,11 @@ mod tests {
     }
 
     fn eq(key: &str, value: &str) -> WhereClause {
-        WhereClause { key: key.to_string(), value: value.to_string(), ..Default::default() }
+        WhereClause {
+            key: key.to_string(),
+            value: value.to_string(),
+            ..Default::default()
+        }
     }
 
     fn ne(key: &str, value: &str) -> WhereClause {
@@ -114,7 +123,11 @@ mod tests {
     }
 
     fn exists(key: &str) -> WhereClause {
-        WhereClause { key: key.to_string(), operator: WhereOperator::Exists, ..Default::default() }
+        WhereClause {
+            key: key.to_string(),
+            operator: WhereOperator::Exists,
+            ..Default::default()
+        }
     }
 
     // ---- Display ----
@@ -141,13 +154,17 @@ mod tests {
 
     #[test]
     fn expr_display_single_clause() {
-        let e = WhereExpr { clauses: vec![eq("env", "prod")] };
+        let e = WhereExpr {
+            clauses: vec![eq("env", "prod")],
+        };
         assert_eq!(e.to_string(), "env=prod");
     }
 
     #[test]
     fn expr_display_multiple_clauses() {
-        let e = WhereExpr { clauses: vec![eq("role", "admin"), eq("env", "prod")] };
+        let e = WhereExpr {
+            clauses: vec![eq("role", "admin"), eq("env", "prod")],
+        };
         assert_eq!(e.to_string(), "role=admin and env=prod");
     }
 
@@ -168,25 +185,33 @@ mod tests {
 
     #[test]
     fn evaluate_eq_matches() {
-        let e = WhereExpr { clauses: vec![eq("env", "prod")] };
+        let e = WhereExpr {
+            clauses: vec![eq("env", "prod")],
+        };
         assert!(e.evaluate(&labels(&[("env", "prod")])));
     }
 
     #[test]
     fn evaluate_eq_wrong_value() {
-        let e = WhereExpr { clauses: vec![eq("env", "prod")] };
+        let e = WhereExpr {
+            clauses: vec![eq("env", "prod")],
+        };
         assert!(!e.evaluate(&labels(&[("env", "staging")])));
     }
 
     #[test]
     fn evaluate_eq_missing_key() {
-        let e = WhereExpr { clauses: vec![eq("env", "prod")] };
+        let e = WhereExpr {
+            clauses: vec![eq("env", "prod")],
+        };
         assert!(!e.evaluate(&labels(&[("region", "us-east")])));
     }
 
     #[test]
     fn evaluate_and_all_must_match() {
-        let e = WhereExpr { clauses: vec![eq("env", "prod"), eq("tier", "premium")] };
+        let e = WhereExpr {
+            clauses: vec![eq("env", "prod"), eq("tier", "premium")],
+        };
         assert!(e.evaluate(&labels(&[("env", "prod"), ("tier", "premium")])));
         assert!(!e.evaluate(&labels(&[("env", "prod"), ("tier", "free")])));
         assert!(!e.evaluate(&labels(&[("env", "prod")])));
@@ -196,21 +221,27 @@ mod tests {
 
     #[test]
     fn evaluate_ne_passes_when_value_differs() {
-        let e = WhereExpr { clauses: vec![ne("env", "dev")] };
+        let e = WhereExpr {
+            clauses: vec![ne("env", "dev")],
+        };
         assert!(e.evaluate(&labels(&[("env", "prod")])));
         assert!(e.evaluate(&labels(&[("env", "staging")])));
     }
 
     #[test]
     fn evaluate_ne_fails_when_value_matches() {
-        let e = WhereExpr { clauses: vec![ne("env", "dev")] };
+        let e = WhereExpr {
+            clauses: vec![ne("env", "dev")],
+        };
         assert!(!e.evaluate(&labels(&[("env", "dev")])));
     }
 
     #[test]
     fn evaluate_ne_missing_key_is_false() {
         // A missing label means we can't confirm it's not "dev"
-        let e = WhereExpr { clauses: vec![ne("env", "dev")] };
+        let e = WhereExpr {
+            clauses: vec![ne("env", "dev")],
+        };
         assert!(!e.evaluate(&labels(&[])));
     }
 
@@ -218,20 +249,26 @@ mod tests {
 
     #[test]
     fn evaluate_in_matches_one_of_list() {
-        let e = WhereExpr { clauses: vec![in_list("env", &["prod", "staging"])] };
+        let e = WhereExpr {
+            clauses: vec![in_list("env", &["prod", "staging"])],
+        };
         assert!(e.evaluate(&labels(&[("env", "prod")])));
         assert!(e.evaluate(&labels(&[("env", "staging")])));
     }
 
     #[test]
     fn evaluate_in_rejects_unlisted_value() {
-        let e = WhereExpr { clauses: vec![in_list("env", &["prod", "staging"])] };
+        let e = WhereExpr {
+            clauses: vec![in_list("env", &["prod", "staging"])],
+        };
         assert!(!e.evaluate(&labels(&[("env", "dev")])));
     }
 
     #[test]
     fn evaluate_in_missing_key_is_false() {
-        let e = WhereExpr { clauses: vec![in_list("env", &["prod"])] };
+        let e = WhereExpr {
+            clauses: vec![in_list("env", &["prod"])],
+        };
         assert!(!e.evaluate(&labels(&[])));
     }
 
@@ -239,7 +276,9 @@ mod tests {
 
     #[test]
     fn evaluate_exists_true_when_key_present() {
-        let e = WhereExpr { clauses: vec![exists("mfa")] };
+        let e = WhereExpr {
+            clauses: vec![exists("mfa")],
+        };
         assert!(e.evaluate(&labels(&[("mfa", "true")])));
         assert!(e.evaluate(&labels(&[("mfa", "false")])));
         assert!(e.evaluate(&labels(&[("mfa", "anything")])));
@@ -247,7 +286,9 @@ mod tests {
 
     #[test]
     fn evaluate_exists_false_when_key_absent() {
-        let e = WhereExpr { clauses: vec![exists("mfa")] };
+        let e = WhereExpr {
+            clauses: vec![exists("mfa")],
+        };
         assert!(!e.evaluate(&labels(&[("env", "prod")])));
         assert!(!e.evaluate(&labels(&[])));
     }

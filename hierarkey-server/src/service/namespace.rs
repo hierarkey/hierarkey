@@ -96,7 +96,9 @@ impl NamespaceService {
             .require_permission_with_labels(
                 ctx,
                 permission,
-                RbacResource::Namespace { path: ns.namespace.to_string() },
+                RbacResource::Namespace {
+                    path: ns.namespace.to_string(),
+                },
                 ns.metadata.labels(),
             )
             .await
@@ -126,7 +128,8 @@ impl NamespaceService {
     pub async fn fetch(&self, ctx: &CallContext, namespace_id: NamespaceId) -> CkResult<Option<Namespace>> {
         let ns = self.namespace_manager.fetch_namespace_by_id(namespace_id).await?;
         if let Some(ref namespace) = ns {
-            self.require_on_namespace(ctx, Permission::NamespaceDescribe, namespace).await?;
+            self.require_on_namespace(ctx, Permission::NamespaceDescribe, namespace)
+                .await?;
         }
         Ok(ns)
     }
@@ -172,7 +175,8 @@ impl NamespaceService {
                 kind: "namespace",
                 id: namespace_id.to_string(),
             })?;
-        self.require_on_namespace(ctx, Permission::NamespaceUpdateMeta, &ns).await?;
+        self.require_on_namespace(ctx, Permission::NamespaceUpdateMeta, &ns)
+            .await?;
         self.namespace_manager
             .update_namespace(ctx, namespace_id, metadata)
             .await
@@ -252,7 +256,8 @@ impl NamespaceService {
                 kind: "namespace",
                 id: namespace_id.to_string(),
             })?;
-        self.require_on_namespace(ctx, Permission::NamespaceKekRotate, &ns).await?;
+        self.require_on_namespace(ctx, Permission::NamespaceKekRotate, &ns)
+            .await?;
 
         let (new_kek_id, new_masterkey_id) = self.kek_encryptor.generate_encrypted_kek(namespace_id).await?;
         self.namespace_manager
