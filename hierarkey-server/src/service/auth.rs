@@ -15,7 +15,7 @@ use hierarkey_core::CkResult;
 use hierarkey_core::error::auth::{AuthError, AuthFailReason};
 use hierarkey_core::error::crypto::CryptoError;
 use hierarkey_core::resources::AccountName;
-use password_hash::{PasswordHasher, SaltString};
+use password_hash::PasswordHasher;
 use std::sync::{Arc, OnceLock};
 use tracing::trace;
 // ------------------------------------------------------------------------------------------------
@@ -28,14 +28,12 @@ pub fn get_dummy_account_hash() -> Result<String, password_hash::Error> {
         return Ok(hash.clone());
     }
 
-    let salt = SaltString::generate(&mut OsRng);
-
     let mut pwd_bytes = vec![0u8; 64];
     OsRng
         .try_fill_bytes(&mut pwd_bytes)
         .map_err(|_| password_hash::Error::Crypto)?;
 
-    let hash = account_argon2().hash_password(&pwd_bytes, &salt)?.to_string();
+    let hash = account_argon2().hash_password(&pwd_bytes)?.to_string();
 
     Ok(DUMMY_USER_HASH.get_or_init(|| hash).clone())
 }

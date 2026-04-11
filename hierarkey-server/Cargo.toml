@@ -27,12 +27,12 @@ preview = []
 
 [dev-dependencies]
 mockito = "1"
-rcgen = "0.13"
+rcgen = "0.14"
 
 [dependencies]
 aes-gcm = { version = "0.10", features = ["aes", "zeroize"] }
 anyhow = "1.0.102"
-argon2 = "0.5"
+argon2 = "0.6.0-rc.8"
 async-trait = "0.1.89"
 axum = { version = "0.8", features = ["json", "macros"] }
 governor = "0.10"
@@ -52,7 +52,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 http-body-util = "0.1.3"
 nom = "8.0.0"
 parking_lot = "0.12.5"
-password-hash = "0.5"
+password-hash = "0.6"
 rand = "0.10.0"
 rand_core = { version = "0.10.0", features = [] }
 ring = "0.17.14"
