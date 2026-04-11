@@ -31,6 +31,9 @@ pub struct ExplainRequest {
 pub struct NearMissDto {
     pub rule: RuleDto,
     pub reason: String,
+    /// The failing `where` condition expression, present only when `reason` is `condition_mismatch`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub condition: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -101,14 +104,16 @@ pub async fn explain(
     let near_misses = explain_result
         .near_misses
         .iter()
-        .map(|nm| NearMissDto {
-            rule: RuleDto::from(&nm.rule),
-            reason: match nm.reason {
-                NearMissReason::PermissionMismatch => "permission_mismatch".to_string(),
-                NearMissReason::TargetMismatch => "target_mismatch".to_string(),
-                NearMissReason::ConditionMismatch => "condition_mismatch".to_string(),
-                NearMissReason::LostToHigherSpecificity => "lost_to_higher_specificity".to_string(),
-            },
+        .map(|nm| {
+            let (reason, condition) = match &nm.reason {
+                NearMissReason::PermissionMismatch => ("permission_mismatch".to_string(), None),
+                NearMissReason::TargetMismatch => ("target_mismatch".to_string(), None),
+                NearMissReason::ConditionMismatch(cond) => {
+                    ("condition_mismatch".to_string(), Some(cond.to_string()))
+                }
+                NearMissReason::LostToHigherSpecificity => ("lost_to_higher_specificity".to_string(), None),
+            };
+            NearMissDto { rule: RuleDto::from(&nm.rule), reason, condition }
         })
         .collect();
 

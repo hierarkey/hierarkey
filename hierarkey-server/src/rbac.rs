@@ -24,6 +24,7 @@ pub use target::Target;
 pub use target_kind::TargetKind;
 pub use where_::WhereClause;
 pub use where_::WhereExpr;
+pub use where_::WhereOperator;
 
 uuid_id!(RuleId, "rul_");
 uuid_id!(RoleId, "rol_");
@@ -75,7 +76,9 @@ pub struct RbacAllowedResponse {
 pub enum NearMissReason {
     PermissionMismatch,
     TargetMismatch,
-    ConditionMismatch,
+    /// The rule matched on permission and target, but its `where` condition failed against
+    /// the resource's labels. The failing condition expression is included.
+    ConditionMismatch(WhereExpr),
     LostToHigherSpecificity,
 }
 

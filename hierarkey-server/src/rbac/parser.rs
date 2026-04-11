@@ -6,15 +6,16 @@ use crate::rbac::{
     AccountPattern, NamespacePattern, Permission, PolicyEffect, SecretPattern, Target, TargetKind, WhereClause,
     WhereExpr,
 };
+use crate::rbac::where_::WhereOperator;
 use nom::error::Error;
 use nom::{
     Finish, IResult, Parser,
     branch::alt,
-    bytes::complete::{tag_no_case, take_while1},
+    bytes::complete::{tag, tag_no_case, take_while1},
     character::complete::{char, multispace0, multispace1},
-    combinator::{all_consuming, cut, opt, value},
+    combinator::{all_consuming, cut, map, opt, value},
     multi::separated_list1,
-    sequence::{preceded, separated_pair},
+    sequence::preceded,
 };
 use std::str::FromStr;
 
@@ -81,30 +82,85 @@ fn parse_pattern_token(input: &str) -> ParseResult<'_, &str> {
 }
 
 // ============================================================================
-// WHERE clause parsing (already typed; these are "syntax-level")
+// WHERE clause parsing
 // ============================================================================
 
-/// Parse a single where clause: "key=value"
-fn parse_where_clause(input: &str) -> ParseResult<'_, WhereClause> {
-    nom::combinator::map(
-        separated_pair(
-            take_while1(|c: char| c.is_alphanumeric() || c == '_'),
-            char('='),
-            take_while1(|c: char| c.is_alphanumeric() || c == '_' || c == '-'),
+/// Characters valid in a label value (used for Eq, Ne, and In list items).
+fn is_value_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_' || c == '-'
+}
+
+/// Parse the `[v1,v2,...]` list used by the `in` operator.
+fn parse_in_list(input: &str) -> ParseResult<'_, Vec<String>> {
+    map(
+        (
+            char('['),
+            separated_list1(char(','), take_while1(is_value_char)),
+            char(']'),
         ),
-        |(key, value): (&str, &str)| WhereClause {
-            key: key.to_string(),
-            value: value.to_string(),
-        },
+        |(_, items, _): (_, Vec<&str>, _)| items.into_iter().map(|s| s.to_string()).collect(),
     )
     .parse(input)
 }
 
-/// Parse optional where expression: "where k=v [and k2=v2 ...]"
+/// Parse a single where clause. Supported forms (after a label key):
+///   `key=value`        — equality
+///   `key!=value`       — inequality
+///   `key in [v1,v2]`  — membership
+///   `key exists`       — presence check
+fn parse_where_clause(input: &str) -> ParseResult<'_, WhereClause> {
+    let (input, key) = take_while1(|c: char| c.is_alphanumeric() || c == '_')(input)?;
+    let (input, _) = multispace0(input)?;
+
+    // "exists" — no value
+    if let Ok((rest, _)) = tag_no_case::<_, _, Error<&str>>("exists").parse(input) {
+        return Ok((rest, WhereClause {
+            key: key.to_string(),
+            operator: WhereOperator::Exists,
+            ..Default::default()
+        }));
+    }
+
+    // "in [v1,v2,...]"
+    if let Ok((rest, values)) = preceded(
+        (tag_no_case("in"), multispace0),
+        parse_in_list,
+    ).parse(input) {
+        return Ok((rest, WhereClause {
+            key: key.to_string(),
+            operator: WhereOperator::In,
+            values,
+            ..Default::default()
+        }));
+    }
+
+    // "!=" value
+    if let Ok((rest, val)) = preceded(
+        tag::<_, _, Error<&str>>("!="),
+        take_while1(is_value_char),
+    ).parse(input) {
+        return Ok((rest, WhereClause {
+            key: key.to_string(),
+            operator: WhereOperator::Ne,
+            value: val.to_string(),
+            ..Default::default()
+        }));
+    }
+
+    // "=" value (default)
+    let (rest, val) = preceded(char('='), take_while1(is_value_char)).parse(input)?;
+    Ok((rest, WhereClause {
+        key: key.to_string(),
+        value: val.to_string(),
+        ..Default::default()
+    }))
+}
+
+/// Parse optional where expression: "where <clause> [and <clause> ...]"
 fn parse_where_expr(input: &str) -> ParseResult<'_, WhereExpr> {
     preceded(
         (tag_no_case("where"), multispace1),
-        nom::combinator::map(
+        map(
             separated_list1((multispace1, tag_no_case("and"), multispace1), parse_where_clause),
             |clauses| WhereExpr { clauses },
         ),
@@ -314,10 +370,34 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_where_clause() {
+    fn test_parse_where_clause_eq() {
         let (_, clause) = parse_where_clause("mfa=true").unwrap();
         assert_eq!(clause.key, "mfa");
+        assert_eq!(clause.operator, WhereOperator::Eq);
         assert_eq!(clause.value, "true");
+    }
+
+    #[test]
+    fn test_parse_where_clause_ne() {
+        let (_, clause) = parse_where_clause("env!=dev").unwrap();
+        assert_eq!(clause.key, "env");
+        assert_eq!(clause.operator, WhereOperator::Ne);
+        assert_eq!(clause.value, "dev");
+    }
+
+    #[test]
+    fn test_parse_where_clause_in() {
+        let (_, clause) = parse_where_clause("env in [prod,staging]").unwrap();
+        assert_eq!(clause.key, "env");
+        assert_eq!(clause.operator, WhereOperator::In);
+        assert_eq!(clause.values, vec!["prod", "staging"]);
+    }
+
+    #[test]
+    fn test_parse_where_clause_exists() {
+        let (_, clause) = parse_where_clause("mfa exists").unwrap();
+        assert_eq!(clause.key, "mfa");
+        assert_eq!(clause.operator, WhereOperator::Exists);
     }
 
     #[test]
@@ -339,6 +419,7 @@ mod tests {
         let cond = rule.condition.unwrap();
         assert_eq!(cond.clauses.len(), 1);
         assert_eq!(cond.clauses[0].key, "mfa");
+        assert_eq!(cond.clauses[0].operator, WhereOperator::Eq);
         assert_eq!(cond.clauses[0].value, "true");
     }
 
@@ -351,9 +432,48 @@ mod tests {
         let cond = rule.condition.unwrap();
         assert_eq!(cond.clauses.len(), 2);
         assert_eq!(cond.clauses[0].key, "role");
+        assert_eq!(cond.clauses[0].operator, WhereOperator::Eq);
         assert_eq!(cond.clauses[0].value, "admin");
         assert_eq!(cond.clauses[1].key, "env");
+        assert_eq!(cond.clauses[1].operator, WhereOperator::Eq);
         assert_eq!(cond.clauses[1].value, "prod");
+    }
+
+    #[test]
+    fn test_parse_rule_with_ne_condition() {
+        let rule = parse_rule_spec("deny secret:reveal to namespace /prod/** where env!=dev").unwrap();
+        let cond = rule.condition.unwrap();
+        assert_eq!(cond.clauses[0].key, "env");
+        assert_eq!(cond.clauses[0].operator, WhereOperator::Ne);
+        assert_eq!(cond.clauses[0].value, "dev");
+    }
+
+    #[test]
+    fn test_parse_rule_with_in_condition() {
+        let rule = parse_rule_spec("allow secret:reveal to namespace /prod where env in [prod,staging]").unwrap();
+        let cond = rule.condition.unwrap();
+        assert_eq!(cond.clauses[0].key, "env");
+        assert_eq!(cond.clauses[0].operator, WhereOperator::In);
+        assert_eq!(cond.clauses[0].values, vec!["prod", "staging"]);
+    }
+
+    #[test]
+    fn test_parse_rule_with_exists_condition() {
+        let rule = parse_rule_spec("allow secret:reveal to namespace /prod where mfa exists").unwrap();
+        let cond = rule.condition.unwrap();
+        assert_eq!(cond.clauses[0].key, "mfa");
+        assert_eq!(cond.clauses[0].operator, WhereOperator::Exists);
+    }
+
+    #[test]
+    fn test_parse_rule_mixed_operators() {
+        let rule =
+            parse_rule_spec("allow secret:reveal to namespace /prod where env in [prod,staging] and tier!=free")
+                .unwrap();
+        let cond = rule.condition.unwrap();
+        assert_eq!(cond.clauses.len(), 2);
+        assert_eq!(cond.clauses[0].operator, WhereOperator::In);
+        assert_eq!(cond.clauses[1].operator, WhereOperator::Ne);
     }
 
     #[test]

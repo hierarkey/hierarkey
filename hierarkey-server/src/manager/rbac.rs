@@ -1392,7 +1392,9 @@ impl RbacManager {
                 } else if !target_match {
                     NearMissReason::TargetMismatch
                 } else {
-                    NearMissReason::ConditionMismatch
+                    // perm and target matched but condition failed — safe to unwrap since
+                    // cond_match is false only when a condition exists
+                    NearMissReason::ConditionMismatch(rule.spec.condition.clone().unwrap())
                 };
                 near_misses.push(RbacNearMiss {
                     rule: rule.clone(),
