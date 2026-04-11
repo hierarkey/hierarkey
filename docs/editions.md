@@ -3,7 +3,7 @@
 Hierarkey is available in two editions:
 
 - **Community Edition** - open source under AGPL-3.0, free to use, self-hosted.
-- **Commercial Edition** - adds enterprise features and requires a license from [hierarkey.com](https://hierarkey.com).
+- **Commercial Edition** - adds additional features and requires a license from [hierarkey.com](https://hierarkey.com).
 
 Both editions share the same core codebase. Commercial features are enabled by
 installing a signed license file.

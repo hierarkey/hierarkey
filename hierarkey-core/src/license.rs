@@ -9,8 +9,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum Tier {
     Community,
-    Professional,
-    Enterprise,
+    Commercial,
 }
 
 /// Individual features that can be enabled by a commercial license.
@@ -29,8 +28,7 @@ impl std::fmt::Display for Tier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Tier::Community => write!(f, "Community"),
-            Tier::Professional => write!(f, "Professional"),
-            Tier::Enterprise => write!(f, "Enterprise"),
+            Tier::Commercial => write!(f, "Commercial"),
         }
     }
 }

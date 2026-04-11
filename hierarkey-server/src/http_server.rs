@@ -54,7 +54,7 @@ pub mod middleware;
 pub mod mtls_provider;
 pub mod nonce_cache;
 
-/// Extension point for commercial/enterprise modules to plug into the server lifecycle.
+/// Extension point for commercial modules to plug into the server lifecycle.
 ///
 /// - `configure` is called in `build_app_state` before the state is frozen into `Arc`s —
 ///   use it to register providers (e.g. HSM) with the masterkey service.

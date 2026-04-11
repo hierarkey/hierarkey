@@ -124,12 +124,7 @@ fn features_for_tier(tier: &Tier) -> LicenseFeaturesDto {
             msp_mode: false,
             audit_export: false,
         },
-        Tier::Professional => LicenseFeaturesDto {
-            advanced_rbac: true,
-            msp_mode: false,
-            audit_export: true,
-        },
-        Tier::Enterprise => LicenseFeaturesDto {
+        Tier::Commercial => LicenseFeaturesDto {
             advanced_rbac: true,
             msp_mode: true,
             audit_export: true,
