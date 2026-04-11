@@ -262,7 +262,7 @@ mod tests {
     fn create_licensed_app_state() -> AppState {
         let state = create_mock_app_state();
         state.license_service.set_effective(EffectiveLicense {
-            tier: Tier::Enterprise,
+            tier: Tier::Commercial,
             licensee: Some("Test".to_string()),
             license_id: Some("test-license".to_string()),
             expires_at: None,

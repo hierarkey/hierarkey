@@ -89,7 +89,7 @@ Full documentation: <https://docs.hierarkey.com>
 ## Commercial Edition
 
 A [Hierarkey Commercial Edition](https://hierarkey.com) is available with additional
-enterprise features on top of the community core:
+additional features on top of the community core:
 
 - **Multi-factor authentication** — TOTP with authenticator apps and backup codes
 - **Federated identity** — OIDC and Kubernetes TokenReview workload authentication
