@@ -426,7 +426,7 @@ mod tests {
     fn real_cert_and_key() -> (String, String, String) {
         let cert_key = rcgen::generate_simple_self_signed(["localhost".into()]).unwrap();
         let cert_pem = cert_key.cert.pem();
-        let key_pem = cert_key.key_pair.serialize_pem();
+        let key_pem = cert_key.signing_key.serialize_pem();
         let combined = format!("{cert_pem}{key_pem}");
         (cert_pem, key_pem, combined)
     }

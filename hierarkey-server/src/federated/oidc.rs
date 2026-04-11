@@ -349,9 +349,13 @@ mod tests {
         let encoding_key = jsonwebtoken::EncodingKey::from_ec_pem(private_pem.as_bytes())
             .expect("rcgen private key must be valid EC PEM");
 
-        // Export the public key as DER (SPKI format).
+        // Export the public key as DER (SPKI format) by decoding the PEM.
         // For P-256 SPKI the last 65 bytes are: 0x04 | x (32 bytes) | y (32 bytes).
-        let pub_der = key_pair.public_key_der();
+        let pub_pem = key_pair.public_key_pem();
+        let b64_content: String = pub_pem.lines().filter(|l| !l.starts_with("-----")).collect();
+        let pub_der = base64::engine::general_purpose::STANDARD
+            .decode(&b64_content)
+            .expect("valid base64 public key PEM");
         let point_start = pub_der.len() - 65;
         assert_eq!(pub_der[point_start], 0x04, "EC point must start with 0x04 (uncompressed)");
         let x = URL_SAFE_NO_PAD.encode(&pub_der[point_start + 1..point_start + 33]);

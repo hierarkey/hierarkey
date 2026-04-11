@@ -20,8 +20,8 @@ use hierarkey_core::resources::AccountName;
 use hierarkey_core::{CkError, CkResult, Metadata};
 #[cfg(test)]
 use parking_lot::Mutex;
-use password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
-use rand::TryRng;
+use password_hash::phc::PasswordHash;
+use password_hash::{PasswordHasher, PasswordVerifier};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Postgres, QueryBuilder};
 #[cfg(test)]
@@ -1377,15 +1377,8 @@ impl AccountManager {
     pub async fn update_password(&self, ctx: &CallContext, account: &Account, new_password: &Password) -> CkResult<()> {
         self.validate_password(new_password)?;
 
-        let mut salt_bytes = [0u8; 16];
-        rand::rng()
-            .try_fill_bytes(&mut salt_bytes[..])
-            .map_err(|e| CryptoError::RandomnessFailure(anyhow::anyhow!(e)))?;
-
-        let salt = SaltString::encode_b64(&salt_bytes).map_err(|_| CryptoError::PasswordHashingFailed)?;
-
         let hash = account_argon2()
-            .hash_password(new_password.as_bytes(), &salt)
+            .hash_password(new_password.as_bytes())
             .map_err(|_| CryptoError::PasswordHashingFailed)?
             .to_string();
 
@@ -1578,15 +1571,8 @@ impl AccountManager {
     fn create_password_hash(&self, password: &Password) -> CkResult<String> {
         self.validate_password(password)?;
 
-        let mut salt_bytes = [0u8; 16];
-        rand::rng()
-            .try_fill_bytes(&mut salt_bytes[..])
-            .map_err(|e| CryptoError::RandomnessFailure(anyhow::anyhow!(e)))?;
-
-        let salt = SaltString::encode_b64(&salt_bytes).map_err(|_| CryptoError::PasswordHashingFailed)?;
-
         Ok(account_argon2()
-            .hash_password(password.as_bytes(), &salt)
+            .hash_password(password.as_bytes())
             .map_err(|_| CryptoError::PasswordHashingFailed)?
             .to_string())
     }
@@ -1744,8 +1730,7 @@ mod tests {
     use crate::audit_context::CallContext;
     use crate::service::account::{AccountData, AccountSearchQuery, CustomAccountData, CustomUserAccountData};
     use hierarkey_core::Labels;
-    use password_hash::{PasswordHasher, SaltString};
-    use rand::TryRng;
+    use password_hash::PasswordHasher;
 
     fn make_manager() -> AccountManager {
         AccountManager::new(Arc::new(InMemoryAccountStore::new()))
@@ -1773,12 +1758,6 @@ mod tests {
 
     async fn create_user(manager: &AccountManager, name: &str) -> Account {
         manager.create(&sys_ctx(), &user_data(name)).await.unwrap()
-    }
-
-    fn make_salt() -> SaltString {
-        let mut salt_bytes = [0u8; 16];
-        rand::rng().try_fill_bytes(&mut salt_bytes).unwrap();
-        SaltString::encode_b64(&salt_bytes).unwrap()
     }
 
     #[tokio::test]
@@ -2054,8 +2033,7 @@ mod tests {
     // A hash of "$argon2id$v=19$..." confirms Argon2id + Version::V0x13 (0x13 = 19).
     #[test]
     fn account_argon2_produces_argon2id_v19_hashes() {
-        let salt = make_salt();
-        let hash = account_argon2().hash_password(b"test", &salt).unwrap().to_string();
+        let hash = account_argon2().hash_password(b"test").unwrap().to_string();
         assert!(hash.starts_with("$argon2id$v=19$"), "expected argon2id v19 hash, got: {hash}");
     }
 
@@ -2114,11 +2092,7 @@ mod tests {
     }
 
     fn hash_password(password: &str) -> String {
-        let salt = make_salt();
-        account_argon2()
-            .hash_password(password.as_bytes(), &salt)
-            .unwrap()
-            .to_string()
+        account_argon2().hash_password(password.as_bytes()).unwrap().to_string()
     }
 
     #[tokio::test]
