@@ -68,6 +68,7 @@ mod tests {
             clauses: vec![WhereClause {
                 key: "env".to_string(),
                 value: "prod".to_string(),
+                ..Default::default()
             }],
         });
         assert_eq!(spec.to_string(), "allow secret:reveal to namespace /prod where env=prod");

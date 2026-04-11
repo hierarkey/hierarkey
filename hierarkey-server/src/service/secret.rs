@@ -89,6 +89,12 @@ impl SecretService {
         }
     }
 
+    async fn require_on_secret(&self, ctx: &CallContext, permission: Permission, secret: &Secret) -> CkResult<()> {
+        self.rbac_service
+            .require_permission_with_labels(ctx, permission, Self::secret_resource(secret), secret.metadata.labels())
+            .await
+    }
+
     #[allow(clippy::too_many_arguments)]
     /// Creates and returns a new secret. Fails when secret already exists with the same ref_key in the namespace.
     pub async fn create_new_secret(
@@ -201,8 +207,7 @@ impl SecretService {
                 id: secret_id.to_string(),
             });
         };
-        self.rbac_service
-            .require_permission(ctx, Permission::SecretUpdateMeta, Self::secret_resource(&secret))
+        self.require_on_secret(ctx, Permission::SecretUpdateMeta, &secret)
             .await?;
         self.secret_manager.update(ctx, secret_id, metadata).await
     }
@@ -225,8 +230,7 @@ impl SecretService {
                 id: rev.secret_id.to_string(),
             });
         };
-        self.rbac_service
-            .require_permission(ctx, Permission::SecretUpdateMeta, Self::secret_resource(&secret))
+        self.require_on_secret(ctx, Permission::SecretUpdateMeta, &secret)
             .await?;
         self.secret_manager.annotate(ctx, secret_revision_id, metadata).await
     }
@@ -250,9 +254,7 @@ impl SecretService {
                 id: secret_id.to_string(),
             });
         };
-        self.rbac_service
-            .require_permission(ctx, Permission::SecretRevise, Self::secret_resource(&secret))
-            .await?;
+        self.require_on_secret(ctx, Permission::SecretRevise, &secret).await?;
 
         // Namespace must be active to create a new revision
         let ns = self
@@ -309,9 +311,7 @@ impl SecretService {
                 id: secret_id.to_string(),
             });
         };
-        self.rbac_service
-            .require_permission(ctx, Permission::SecretReveal, Self::secret_resource(&secret))
-            .await?;
+        self.require_on_secret(ctx, Permission::SecretReveal, &secret).await?;
 
         // Find secret revision (direct manager call — RBAC already checked above)
         let Some(_secret_rev) = self.secret_manager.find_revision(secret_id, revision).await? else {
@@ -346,9 +346,7 @@ impl SecretService {
     pub async fn find_secret(&self, ctx: &CallContext, secret_id: SecretId) -> CkResult<Option<Secret>> {
         let secret = self.secret_manager.find_by_id(secret_id).await?;
         if let Some(ref s) = secret {
-            self.rbac_service
-                .require_permission(ctx, Permission::SecretDescribe, Self::secret_resource(s))
-                .await?;
+            self.require_on_secret(ctx, Permission::SecretDescribe, s).await?;
         }
         Ok(secret)
     }
@@ -365,8 +363,7 @@ impl SecretService {
                 id: secret_id.to_string(),
             });
         };
-        self.rbac_service
-            .require_permission(ctx, Permission::SecretReadHistory, Self::secret_resource(&secret))
+        self.require_on_secret(ctx, Permission::SecretReadHistory, &secret)
             .await?;
         self.secret_manager.get_revisions(secret_id).await
     }
@@ -379,8 +376,7 @@ impl SecretService {
                 id: secret_id.to_string(),
             });
         };
-        self.rbac_service
-            .require_permission(ctx, Permission::SecretManageLifecycle, Self::secret_resource(&secret))
+        self.require_on_secret(ctx, Permission::SecretManageLifecycle, &secret)
             .await?;
 
         // Namespace must be active to disable a secret
@@ -419,8 +415,7 @@ impl SecretService {
                 id: secret_id.to_string(),
             });
         };
-        self.rbac_service
-            .require_permission(ctx, Permission::SecretManageLifecycle, Self::secret_resource(&secret))
+        self.require_on_secret(ctx, Permission::SecretManageLifecycle, &secret)
             .await?;
 
         // Only disabled secrets can be re-enabled; deleted secrets require restore
@@ -443,9 +438,7 @@ impl SecretService {
                 id: secret_id.to_string(),
             });
         };
-        self.rbac_service
-            .require_permission(ctx, Permission::SecretRestore, Self::secret_resource(&secret))
-            .await?;
+        self.require_on_secret(ctx, Permission::SecretRestore, &secret).await?;
 
         if secret.status != ResourceStatus::Deleted {
             return Err(CkError::Conflict {
@@ -477,9 +470,7 @@ impl SecretService {
                 id: rev.secret_id.to_string(),
             });
         };
-        self.rbac_service
-            .require_permission(ctx, Permission::SecretRollback, Self::secret_resource(&secret))
-            .await?;
+        self.require_on_secret(ctx, Permission::SecretRollback, &secret).await?;
 
         // Namespace must be active to change the active revision
         let ns = self
@@ -507,9 +498,7 @@ impl SecretService {
                 id: secret_id.to_string(),
             });
         };
-        self.rbac_service
-            .require_permission(ctx, Permission::SecretDelete, Self::secret_resource(&secret))
-            .await?;
+        self.require_on_secret(ctx, Permission::SecretDelete, &secret).await?;
         self.secret_manager
             .set_status(ctx, secret_id, ResourceStatus::Deleted)
             .await
@@ -525,8 +514,7 @@ impl SecretService {
         let Some(secret) = self.secret_manager.find_by_id(secret_id).await? else {
             return Ok(None);
         };
-        self.rbac_service
-            .require_permission(ctx, Permission::SecretReadHistory, Self::secret_resource(&secret))
+        self.require_on_secret(ctx, Permission::SecretReadHistory, &secret)
             .await?;
         self.secret_manager.find_revision(secret_id, revision).await
     }
@@ -688,9 +676,7 @@ impl SecretService {
         }
 
         // RBAC: only secret:reveal is required
-        self.rbac_service
-            .require_permission(ctx, Permission::SecretReveal, Self::secret_resource(&secret))
-            .await?;
+        self.require_on_secret(ctx, Permission::SecretReveal, &secret).await?;
 
         // Resolve the requested revision to a concrete revision number
         let revision = match sec_ref.revision {

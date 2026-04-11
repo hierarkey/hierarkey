@@ -91,6 +91,19 @@ impl NamespaceService {
         }
     }
 
+    async fn require_on_namespace(&self, ctx: &CallContext, permission: Permission, ns: &Namespace) -> CkResult<()> {
+        self.rbac_service
+            .require_permission_with_labels(
+                ctx,
+                permission,
+                RbacResource::Namespace {
+                    path: ns.namespace.to_string(),
+                },
+                ns.metadata.labels(),
+            )
+            .await
+    }
+
     pub async fn fetch_by_namespace(
         &self,
         ctx: &CallContext,
@@ -115,14 +128,7 @@ impl NamespaceService {
     pub async fn fetch(&self, ctx: &CallContext, namespace_id: NamespaceId) -> CkResult<Option<Namespace>> {
         let ns = self.namespace_manager.fetch_namespace_by_id(namespace_id).await?;
         if let Some(ref namespace) = ns {
-            self.rbac_service
-                .require_permission(
-                    ctx,
-                    Permission::NamespaceDescribe,
-                    RbacResource::Namespace {
-                        path: namespace.namespace.to_string(),
-                    },
-                )
+            self.require_on_namespace(ctx, Permission::NamespaceDescribe, namespace)
                 .await?;
         }
         Ok(ns)
@@ -169,14 +175,7 @@ impl NamespaceService {
                 kind: "namespace",
                 id: namespace_id.to_string(),
             })?;
-        self.rbac_service
-            .require_permission(
-                ctx,
-                Permission::NamespaceUpdateMeta,
-                RbacResource::Namespace {
-                    path: ns.namespace.to_string(),
-                },
-            )
+        self.require_on_namespace(ctx, Permission::NamespaceUpdateMeta, &ns)
             .await?;
         self.namespace_manager
             .update_namespace(ctx, namespace_id, metadata)
@@ -192,15 +191,7 @@ impl NamespaceService {
                 kind: "namespace",
                 id: namespace_id.to_string(),
             })?;
-        self.rbac_service
-            .require_permission(
-                ctx,
-                Permission::NamespaceDelete,
-                RbacResource::Namespace {
-                    path: ns.namespace.to_string(),
-                },
-            )
-            .await?;
+        self.require_on_namespace(ctx, Permission::NamespaceDelete, &ns).await?;
 
         if ns.status != ResourceStatus::Active {
             return Err(CkError::Conflict {
@@ -220,15 +211,7 @@ impl NamespaceService {
                 kind: "namespace",
                 id: namespace_id.to_string(),
             })?;
-        self.rbac_service
-            .require_permission(
-                ctx,
-                Permission::NamespaceDelete,
-                RbacResource::Namespace {
-                    path: ns.namespace.to_string(),
-                },
-            )
-            .await?;
+        self.require_on_namespace(ctx, Permission::NamespaceDelete, &ns).await?;
 
         if ns.status != ResourceStatus::Disabled {
             return Err(CkError::Conflict {
@@ -248,15 +231,7 @@ impl NamespaceService {
                 kind: "namespace",
                 id: namespace_id.to_string(),
             })?;
-        self.rbac_service
-            .require_permission(
-                ctx,
-                Permission::NamespaceDelete,
-                RbacResource::Namespace {
-                    path: ns.namespace.to_string(),
-                },
-            )
-            .await?;
+        self.require_on_namespace(ctx, Permission::NamespaceDelete, &ns).await?;
 
         if ns.status != ResourceStatus::Disabled {
             return Err(CkError::Conflict {
@@ -281,14 +256,7 @@ impl NamespaceService {
                 kind: "namespace",
                 id: namespace_id.to_string(),
             })?;
-        self.rbac_service
-            .require_permission(
-                ctx,
-                Permission::NamespaceKekRotate,
-                RbacResource::Namespace {
-                    path: ns.namespace.to_string(),
-                },
-            )
+        self.require_on_namespace(ctx, Permission::NamespaceKekRotate, &ns)
             .await?;
 
         let (new_kek_id, new_masterkey_id) = self.kek_encryptor.generate_encrypted_kek(namespace_id).await?;
@@ -333,12 +301,13 @@ impl NamespaceService {
         for entry in all {
             if self
                 .rbac_service
-                .check_permission(
+                .check_permission_with_labels(
                     ctx,
                     Permission::NamespaceList,
                     RbacResource::Namespace {
                         path: entry.namespace.namespace.to_string(),
                     },
+                    entry.namespace.metadata.labels(),
                 )
                 .await?
             {
