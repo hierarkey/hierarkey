@@ -11,6 +11,7 @@ pub(crate) mod masterkey;
 pub(crate) mod namespace;
 pub(crate) mod rbac;
 pub(crate) mod secret;
+pub(crate) mod signing_key;
 pub(crate) mod token;
 
 pub(crate) use account::AccountManager;
