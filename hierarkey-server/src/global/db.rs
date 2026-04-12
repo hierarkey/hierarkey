@@ -6,7 +6,6 @@ use crate::global::utils::file::check_file_permissions;
 use hierarkey_core::{CkError, CkResult};
 use sqlx::PgPool;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
-use std::path::PathBuf;
 use std::str::FromStr;
 use tracing::warn;
 
@@ -62,10 +61,11 @@ pub async fn create_pool(cfg: &Config) -> CkResult<PgPool> {
             connect_opts = connect_opts.ssl_client_cert(client_cert);
         };
         if let Some(client_key) = &cfg.database.tls.client_key_path {
-            // Check if key file has correct permissions
-            let path = PathBuf::from_str(client_key)
-                .map_err(|e| CkError::FilePermissions(format!("Invalid client key file path '{client_key}': {e}")))?;
-            if !check_file_permissions(&path)? {
+            // Open the key file and check permissions on the open fd (fstat, not stat)
+            // to avoid a TOCTOU race between the check and sqlx re-opening the file.
+            let key_file = std::fs::File::open(client_key)
+                .map_err(|e| CkError::FilePermissions(format!("Cannot open client key file '{client_key}': {e}")))?;
+            if !check_file_permissions(&key_file)? {
                 warn!(
                     "Client key file '{}' has insecure permissions. It is mandatory to set the file permissions to be readable only by the owner.",
                     client_key

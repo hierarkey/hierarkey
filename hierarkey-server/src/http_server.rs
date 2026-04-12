@@ -35,7 +35,6 @@ use hierarkey_core::api::status::{ApiCode, ApiErrorCode};
 use hierarkey_core::{CkError, CkResult};
 use sqlx::PgPool;
 use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -445,20 +444,24 @@ pub async fn start_tls_server(server_cfg: &ServerConfig, app: Router) -> CkResul
         .ok_or_else(|| CkError::Custom("TLS mode requires key_path".into()))?;
     debug!("Using TLS key at {}", key_path);
 
-    // We will first check if the key_path is a file and 0600 permissions
-    // This is a TOCTOU race condition but better than nothing. It's a sanity-check for users
-    // who might accidentally set insecure permissions on the key file.
-    let path = &PathBuf::from_str(key_path).map_err(|e| CkError::Custom(e.to_string()))?;
-    if !path.exists() {
-        return Err(CkError::FileNotFound(format!("TLS key file {key_path} does not exist")));
-    }
-    if !check_file_permissions(path)? {
+    // Open the key file first, then check permissions on the open fd (fstat, not stat)
+    let key_file =
+        std::fs::File::open(key_path).map_err(|e| CkError::FileNotFound(format!("TLS key file {key_path}: {e}")))?;
+    if !check_file_permissions(&key_file)? {
         return Err(CkError::FilePermissions(format!(
             "TLS key file {key_path} has insecure permissions (must be 0600)"
         )));
     }
+    let key_bytes = {
+        use std::io::Read;
+        let mut buf = Vec::new();
+        std::io::BufReader::new(key_file).read_to_end(&mut buf)?;
+        buf
+    };
+    let cert_bytes = std::fs::read(cert_path.as_str())
+        .map_err(|e| CkError::FileNotFound(format!("TLS cert file {cert_path}: {e}")))?;
 
-    let tls_config = RustlsConfig::from_pem_file(cert_path.as_str(), key_path.as_str())
+    let tls_config = RustlsConfig::from_pem(cert_bytes, key_bytes)
         .await
         .map_err(|e| CkError::Custom(format!("failed to load TLS config: {e}")))?;
 
