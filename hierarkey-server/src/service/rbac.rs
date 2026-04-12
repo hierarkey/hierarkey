@@ -399,7 +399,7 @@ mod tests {
 
     fn make_service() -> RbacService {
         let store = Arc::new(InMemoryRbacStore::new());
-        let manager = Arc::new(RbacManager::new(store));
+        let manager = Arc::new(RbacManager::new(store, Arc::new(crate::service::signing_key_slot::SigningKeySlot::new())));
         RbacService::new(manager)
     }
 
@@ -409,7 +409,7 @@ mod tests {
         use crate::rbac::spec::RuleSpec;
 
         let store = Arc::new(InMemoryRbacStore::new());
-        let manager = Arc::new(RbacManager::new(store.clone()));
+        let manager = Arc::new(RbacManager::new(store.clone(), Arc::new(crate::service::signing_key_slot::SigningKeySlot::new())));
         let svc = RbacService::new(manager);
 
         let admin_id = crate::manager::account::AccountId::new();
@@ -423,7 +423,7 @@ mod tests {
             .await
             .expect("bootstrap rule_create");
         store
-            .bind_rule_to_user(admin_id, rule.id, admin_id)
+            .bind_rule_to_user(admin_id, rule.id, admin_id, None)
             .await
             .expect("bootstrap bind_rule_to_user");
 
@@ -464,7 +464,7 @@ mod tests {
         use crate::rbac::spec::RuleSpec;
 
         let store = Arc::new(InMemoryRbacStore::new());
-        let manager = Arc::new(RbacManager::new(store.clone()));
+        let manager = Arc::new(RbacManager::new(store.clone(), Arc::new(crate::service::signing_key_slot::SigningKeySlot::new())));
         let svc = RbacService::new(manager);
 
         let account_id = crate::manager::account::AccountId::new();
@@ -476,7 +476,7 @@ mod tests {
             .rule_create(account_id, spec, hierarkey_core::Metadata::new())
             .await
             .unwrap();
-        store.bind_rule_to_user(account_id, rule.id, account_id).await.unwrap();
+        store.bind_rule_to_user(account_id, rule.id, account_id, None).await.unwrap();
 
         let result = svc
             .require_permission(&ctx, Permission::RbacAdmin, rbac_platform_resource())
@@ -692,7 +692,7 @@ mod tests {
         use crate::rbac::spec::RuleSpec;
 
         let store = Arc::new(InMemoryRbacStore::new());
-        let manager = Arc::new(RbacManager::new(store.clone()));
+        let manager = Arc::new(RbacManager::new(store.clone(), Arc::new(crate::service::signing_key_slot::SigningKeySlot::new())));
         let svc = RbacService::new(manager);
 
         let admin_id = AccountId::new();
@@ -700,7 +700,7 @@ mod tests {
 
         let spec = RuleSpec::try_from("allow rbac:admin to all").unwrap();
         let bootstrap = store.rule_create(admin_id, spec, Metadata::new()).await.unwrap();
-        store.bind_rule_to_user(admin_id, bootstrap.id, admin_id).await.unwrap();
+        store.bind_rule_to_user(admin_id, bootstrap.id, admin_id, None).await.unwrap();
 
         // Create a second rule and bind it to admin
         let spec2 = RuleSpec::try_from("allow namespace:describe to namespace /z").unwrap();

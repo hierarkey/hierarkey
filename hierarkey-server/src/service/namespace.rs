@@ -368,7 +368,7 @@ mod tests {
         let ns_store = Arc::new(InMemoryNamespaceStore::new());
         let manager = Arc::new(NamespaceManager::new(ns_store));
         let rbac_store = Arc::new(InMemoryRbacStore::new());
-        let rbac_manager = Arc::new(RbacManager::new(rbac_store));
+        let rbac_manager = Arc::new(RbacManager::new(rbac_store, Arc::new(crate::service::signing_key_slot::SigningKeySlot::new())));
         let rbac_service = Arc::new(RbacService::new(rbac_manager));
         NamespaceService::new(manager, Arc::new(MockKekEncryptor), rbac_service)
     }
@@ -377,7 +377,7 @@ mod tests {
         let ns_store = Arc::new(InMemoryNamespaceStore::new());
         let manager = Arc::new(NamespaceManager::new(ns_store));
         let rbac_store = Arc::new(InMemoryRbacStore::new());
-        let rbac_manager = Arc::new(RbacManager::new(rbac_store.clone()));
+        let rbac_manager = Arc::new(RbacManager::new(rbac_store.clone(), Arc::new(crate::service::signing_key_slot::SigningKeySlot::new())));
         let rbac_service = Arc::new(RbacService::new(rbac_manager));
         let svc = NamespaceService::new(manager, Arc::new(MockKekEncryptor), rbac_service);
         (svc, rbac_store)
@@ -633,7 +633,7 @@ mod tests {
             .rule_create(user_id, spec, hierarkey_core::Metadata::new())
             .await
             .unwrap();
-        rbac_store.bind_rule_to_user(user_id, rule.id, user_id).await.unwrap();
+        rbac_store.bind_rule_to_user(user_id, rule.id, user_id, None).await.unwrap();
 
         let query = NamespaceSearchQuery {
             q: None,
@@ -723,7 +723,7 @@ mod tests {
             .rule_create(user_id, spec, hierarkey_core::Metadata::new())
             .await
             .unwrap();
-        rbac_store.bind_rule_to_user(user_id, rule.id, user_id).await.unwrap();
+        rbac_store.bind_rule_to_user(user_id, rule.id, user_id, None).await.unwrap();
 
         let query = NamespaceSearchQuery {
             q: None,
@@ -765,7 +765,7 @@ mod tests {
             .rule_create(user_id, spec, hierarkey_core::Metadata::new())
             .await
             .unwrap();
-        rbac_store.bind_rule_to_user(user_id, rule.id, user_id).await.unwrap();
+        rbac_store.bind_rule_to_user(user_id, rule.id, user_id, None).await.unwrap();
 
         let query = NamespaceSearchQuery {
             q: None,
@@ -803,7 +803,7 @@ mod tests {
             .await
             .unwrap();
         rbac_store
-            .bind_rule_to_user(user_id, allow_rule.id, user_id)
+            .bind_rule_to_user(user_id, allow_rule.id, user_id, None)
             .await
             .unwrap();
 
@@ -813,7 +813,7 @@ mod tests {
             .await
             .unwrap();
         rbac_store
-            .bind_rule_to_user(user_id, deny_rule.id, user_id)
+            .bind_rule_to_user(user_id, deny_rule.id, user_id, None)
             .await
             .unwrap();
 
@@ -855,7 +855,7 @@ mod tests {
             .rule_create(user_id, spec, hierarkey_core::Metadata::new())
             .await
             .unwrap();
-        rbac_store.bind_rule_to_user(user_id, rule.id, user_id).await.unwrap();
+        rbac_store.bind_rule_to_user(user_id, rule.id, user_id, None).await.unwrap();
 
         // Page 1: limit=2, offset=0 — should get first 2 visible namespaces, total=3.
         let query = NamespaceSearchQuery {

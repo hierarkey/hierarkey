@@ -686,7 +686,17 @@ impl AccountService {
 
         self.account_manager.delete_account(ctx, account_id).await
     }
+
+    /// Recover a `Tampered` account (CLI break-glass, requires master key unlocked).
+    ///
+    /// Bypasses RBAC - must only be called from the CLI recovery path after the
+    /// master key has been unlocked and the signing key has been loaded into the slot.
+    pub async fn recover_tampered_account(&self, ctx: &CallContext, account_id: AccountId) -> CkResult<()> {
+        self.account_manager.recover_account(ctx, account_id).await
+    }
+
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -709,7 +719,8 @@ mod tests {
 
     fn make_svc() -> (AccountService, Arc<InMemoryAccountStore>) {
         let store = Arc::new(InMemoryAccountStore::new());
-        let manager = Arc::new(AccountManager::new(store.clone()));
+        let signing_slot = Arc::new(crate::service::signing_key_slot::SigningKeySlot::new());
+        let manager = Arc::new(AccountManager::new(store.clone(), signing_slot));
         let token_store = Arc::new(InMemoryTokenStore::new());
         let token_manager = Arc::new(TokenManager::new(token_store));
         let svc = AccountService::new(manager, token_manager);
@@ -749,6 +760,7 @@ mod tests {
             updated_by: None,
             deleted_at: None,
             deleted_by: None,
+            row_hmac: None,
         }
     }
 

@@ -2,6 +2,8 @@
 // Copyright (C) 2025-2026 Joshua Thijssen <jthijssen@hierarkey.com>
 
 use crate::audit_context::CallContext;
+use crate::global::keys::SigningKey;
+use crate::manager::masterkey::MasterKeyStatus;
 use crate::global::config::{Config, ServerMode};
 use crate::http_server::federated_auth_provider::FederatedAuthProvider;
 use crate::http_server::mfa_provider::MfaProvider;
@@ -15,6 +17,7 @@ use crate::manager::masterkey::{MasterKeyUsage, SqlMasterKeyStore};
 use crate::manager::namespace::{NamespaceManager, SqlNamespaceStore};
 use crate::manager::rbac::SqlRbacStore;
 use crate::manager::secret::sql_store::SqlSecretStore;
+use crate::manager::signing_key::{SigningKeyManager, SqlSigningKeyStore};
 use crate::manager::token::SqlTokenStore;
 use crate::service::masterkey::MasterKeyProviderType;
 use crate::service::masterkey::provider::insecure::InsecureMasterKeyProvider;
@@ -235,7 +238,8 @@ impl StartupChecks {
             .await
             .map_err(StartupError::Other)?;
         let store = Arc::new(SqlAccountStore::new(pool.clone()).map_err(StartupError::Other)?);
-        let account_manager = AccountManager::new(store);
+        let signing_slot = Arc::new(crate::service::signing_key_slot::SigningKeySlot::new());
+        let account_manager = AccountManager::new(store, signing_slot);
 
         let system_name = AccountName::try_from("$system").map_err(StartupError::Other)?;
         let system_account = account_manager
@@ -259,7 +263,8 @@ impl StartupChecks {
             .await
             .map_err(StartupError::Other)?;
         let store = Arc::new(SqlAccountStore::new(pool.clone()).map_err(StartupError::Other)?);
-        let account_manager = AccountManager::new(store);
+        let signing_slot = Arc::new(crate::service::signing_key_slot::SigningKeySlot::new());
+        let account_manager = AccountManager::new(store, signing_slot);
 
         let admin_count = account_manager.get_admin_count().await.map_err(StartupError::Other)?;
         if admin_count == 0 {
@@ -314,7 +319,8 @@ pub async fn build_app_state(cfg: Config, extensions: &[Box<dyn ServerExtension>
     let mk_manager = Arc::new(MasterKeyManager::new(store)?);
 
     let store = Arc::new(SqlAccountStore::new(pool.clone())?);
-    let account_manager = Arc::new(AccountManager::new(store));
+    let signing_slot = Arc::new(crate::service::signing_key_slot::SigningKeySlot::new());
+    let account_manager = Arc::new(AccountManager::new(store, signing_slot.clone()));
 
     let store = Arc::new(SqlNamespaceStore::new(pool.clone()));
     let ns_manager = Arc::new(NamespaceManager::new(store));
@@ -362,8 +368,11 @@ pub async fn build_app_state(cfg: Config, extensions: &[Box<dyn ServerExtension>
     let store = Arc::new(SqlKekStore::new(pool.clone()));
     let kek_manager = Arc::new(KekManager::new(store));
 
+    let signing_key_store = Arc::new(SqlSigningKeyStore::new(pool.clone()));
+    let signing_key_manager = Arc::new(SigningKeyManager::new(signing_key_store));
+
     let rbac_store = Arc::new(SqlRbacStore::new(pool.clone()));
-    let rbac_manager = Arc::new(RbacManager::new(rbac_store));
+    let rbac_manager = Arc::new(RbacManager::new(rbac_store, signing_slot.clone()));
 
     let kek_service = Arc::new(KekService::new(
         kek_manager,
@@ -429,6 +438,8 @@ pub async fn build_app_state(cfg: Config, extensions: &[Box<dyn ServerExtension>
         task_manager,
         config: cfg,
         sa_nonce_cache,
+        signing_slot,
+        signing_key_manager,
     })
 }
 
@@ -502,6 +513,32 @@ fn setup_stdout_logging(filter: reload::Layer<EnvFilter, tracing_subscriber::Reg
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set global subscriber");
 }
 
+/// Decrypt and load the active signing key into the in-process slot.
+///
+/// Called after master keys are loaded.  If no signing key has been provisioned,
+/// or the active master key is still locked, HMAC checks are silently skipped
+/// (the server runs in degraded mode rather than refusing to start).
+pub async fn load_signing_key(state: &AppState) -> CkResult<()> {
+    let Some(enc_sk) = state.signing_key_manager.fetch_active().await? else {
+        return Ok(());
+    };
+
+    let ctx = CallContext::system();
+    let master_keys = state.masterkey_service.find_all(&ctx).await?;
+    let Some(active_mk) = master_keys.iter().find(|k| k.status == MasterKeyStatus::Active) else {
+        return Ok(());
+    };
+
+    if state.masterkey_service.is_locked(&ctx, active_mk)? {
+        return Ok(());
+    }
+
+    let crypto = state.masterkey_service.get_crypto_handle(active_mk)?;
+    let key_bytes = crypto.unwrap_signing_key(&enc_sk)?;
+    state.signing_slot.load(SigningKey::from_bytes(&key_bytes)?);
+    Ok(())
+}
+
 /// Load all master keys from the database into the in-memory keyring.
 async fn load_master_keys(state: &AppState) -> CkResult<()> {
     let ctx = CallContext::system();
@@ -535,6 +572,22 @@ pub async fn start_server(cfg: Config, extensions: &[Box<dyn ServerExtension>]) 
         eprintln!("  [ FAIL ]  {:<18}  {e}", "Master key");
         e
     })?;
+
+    match load_signing_key(&state).await {
+        Ok(()) if state.signing_slot.peek().is_some() => {
+            println!("  [  OK  ]  {:<18}  active (row HMAC checks enabled)", "Signing key");
+        }
+        Ok(()) => {
+            println!(
+                "  [ WARN ]  {:<18}  not provisioned - run 'hierarkey bootstrap-signing-key'",
+                "Signing key"
+            );
+        }
+        Err(e) => {
+            eprintln!("  [ FAIL ]  {:<18}  {e}", "Signing key");
+            return Err(e);
+        }
+    }
 
     if cfg.masterkey.allow_insecure_masterkey {
         warn!(

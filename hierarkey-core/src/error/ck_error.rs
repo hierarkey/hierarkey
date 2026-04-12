@@ -76,4 +76,9 @@ pub enum CkError {
 
     #[error("file not found: {0}")]
     FileNotFound(String),
+
+    /// Row-level HMAC check failed: the stored MAC does not match the computed one.
+    /// This indicates the database row was modified outside the application.
+    #[error("row integrity violation: {kind} {id}")]
+    RowIntegrityViolation { kind: &'static str, id: String },
 }

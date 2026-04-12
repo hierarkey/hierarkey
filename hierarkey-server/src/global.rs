@@ -6,6 +6,7 @@ pub mod config;
 pub mod db;
 pub mod keys;
 pub mod resource;
+pub mod row_hmac;
 pub mod short_id;
 pub mod utils;
 pub mod uuid_id;

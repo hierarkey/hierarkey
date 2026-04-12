@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2025-2026 Joshua Thijssen <jthijssen@hierarkey.com>
 
-use crate::global::keys::{EncryptedSigningKey, SigningKeyId};
+use crate::global::keys::{EncryptedSigningKey, SigningKey, SigningKeyId};
 use crate::global::short_id::ShortId;
 use crate::manager::kek::KekEncAlgo;
 use crate::manager::masterkey::MasterkeyId;
 use crate::manager::secret::encrypted_data::EncryptedData;
+use crate::service::masterkey::provider::crypto::MasterKeyCrypto;
 use crate::one_line_sql;
 use hierarkey_core::{CkError, CkResult};
 #[cfg(test)]
@@ -216,6 +217,32 @@ impl SigningKeyManager {
 
         self.store.store(&key).await?;
         Ok(key)
+    }
+
+    /// Generate a new signing key, encrypt it with the given master key crypto handle,
+    /// and persist it.  The pre-generated `id` is bound into the ciphertext AAD so the
+    /// stored row cannot be silently swapped for a different key.
+    ///
+    /// Returns both the plaintext key (to load into the slot immediately) and the
+    /// persisted `EncryptedSigningKey`.
+    pub async fn bootstrap_new(
+        &self,
+        crypto: &dyn MasterKeyCrypto,
+        masterkey_id: MasterkeyId,
+    ) -> CkResult<(SigningKey, EncryptedSigningKey)> {
+        let sk = SigningKey::generate()?;
+        let id = SigningKeyId::new();
+        let enc_data = crypto.wrap_signing_key(sk.as_bytes(), masterkey_id, id)?;
+        let enc_key = EncryptedSigningKey {
+            id,
+            short_id: ShortId::generate("sk_", 12),
+            algo: crypto.algo(),
+            ciphertext: enc_data,
+            masterkey_id,
+            created_at: chrono::Utc::now(),
+        };
+        self.store.store(&enc_key).await?;
+        Ok((sk, enc_key))
     }
 
     /// Soft-delete the currently active signing key.  Call this before creating a

@@ -2,6 +2,7 @@
 // Copyright (C) 2025-2026 Joshua Thijssen <jthijssen@hierarkey.com>
 
 use crate::audit_context::CallContext;
+use crate::global::row_hmac::{sign_account_role_binding, sign_account_rule_binding, sign_rule, verify_account_role_binding, verify_account_rule_binding, RowHmac};
 use crate::manager::account::AccountId;
 use crate::manager::rbac::role::{AccountBindings, Role, RoleRow, RoleWithRules};
 use crate::manager::rbac::rule::{Rule, RuleRow};
@@ -59,6 +60,28 @@ impl TryFrom<RuleListRow> for Rule {
 
 // ----------------------------------------------------------------------------------------------
 
+/// Raw row from `rbac_account_rules` - used for HMAC verification on read.
+#[derive(Debug, sqlx::FromRow)]
+pub struct RuleBindingRow {
+    pub account_id: AccountId,
+    pub rule_id: RuleId,
+    pub valid_from: Option<chrono::DateTime<chrono::Utc>>,
+    pub valid_until: Option<chrono::DateTime<chrono::Utc>>,
+    pub row_hmac: Option<String>,
+}
+
+/// Raw row from `rbac_account_roles` - used for HMAC verification on read.
+#[derive(Debug, sqlx::FromRow)]
+pub struct RoleBindingRow {
+    pub account_id: AccountId,
+    pub role_id: RoleId,
+    pub valid_from: Option<chrono::DateTime<chrono::Utc>>,
+    pub valid_until: Option<chrono::DateTime<chrono::Utc>>,
+    pub row_hmac: Option<String>,
+}
+
+// ----------------------------------------------------------------------------------------------
+
 // Trait for RbacStore
 #[async_trait::async_trait]
 pub trait RbacStore: Send + Sync + 'static {
@@ -80,19 +103,40 @@ pub trait RbacStore: Send + Sync + 'static {
     async fn delete_rule_from_role(&self, actor: AccountId, role_id: RoleId, rule_id: RuleId) -> CkResult<()>;
 
     async fn rule_get(&self, rule_id: RuleId) -> CkResult<Rule>;
-    async fn rule_create(&self, actor: AccountId, spec: RuleSpec, metadata: Metadata) -> CkResult<Rule>;
+    /// Insert a new rule and return the raw DB row (including `row_hmac = NULL`).
+    /// Callers that want a signed row should call `rule_set_hmac` afterwards.
+    async fn rule_create(&self, actor: AccountId, spec: RuleSpec, metadata: Metadata) -> CkResult<RuleRow>;
+    /// Persist a pre-computed row HMAC for an existing rule.
+    async fn rule_set_hmac(&self, rule_id: RuleId, hmac_hex: &str) -> CkResult<()>;
     async fn rule_delete(&self, actor: AccountId, id: RuleId) -> CkResult<()>;
     async fn rule_search(&self) -> CkResult<Vec<RuleListItem>>;
 
-    async fn bind_rule_to_user(&self, actor: AccountId, rule_id: RuleId, account_id: AccountId) -> CkResult<()>;
+    async fn bind_rule_to_user(
+        &self,
+        actor: AccountId,
+        rule_id: RuleId,
+        account_id: AccountId,
+        row_hmac: Option<String>,
+    ) -> CkResult<()>;
     async fn bind_rule_to_label(&self, actor: AccountId, rule_id: RuleId, key: &str, value: &str) -> CkResult<()>;
-    async fn bind_role_to_user(&self, actor: AccountId, role_id: RoleId, account_id: AccountId) -> CkResult<()>;
+    async fn bind_role_to_user(
+        &self,
+        actor: AccountId,
+        role_id: RoleId,
+        account_id: AccountId,
+        row_hmac: Option<String>,
+    ) -> CkResult<()>;
     async fn bind_role_to_label(&self, actor: AccountId, role_id: RoleId, key: &str, value: &str) -> CkResult<()>;
 
     async fn unbind_rule_from_user(&self, actor: AccountId, rule_id: RuleId, account_id: AccountId) -> CkResult<()>;
     async fn unbind_rule_from_label(&self, actor: AccountId, rule_id: RuleId, key: &str, value: &str) -> CkResult<()>;
     async fn unbind_role_from_user(&self, actor: AccountId, role_id: RoleId, account_id: AccountId) -> CkResult<()>;
     async fn unbind_role_from_label(&self, actor: AccountId, role_id: RoleId, key: &str, value: &str) -> CkResult<()>;
+
+    /// Return active rule-binding rows (with their HMACs) for an account.
+    async fn get_active_rule_bindings(&self, account_id: AccountId) -> CkResult<Vec<RuleBindingRow>>;
+    /// Return active role-binding rows (with their HMACs) for an account.
+    async fn get_active_role_bindings(&self, account_id: AccountId) -> CkResult<Vec<RoleBindingRow>>;
 }
 
 // ----------------------------------------------------------------------------------------------
@@ -147,7 +191,8 @@ impl RbacStore for SqlRbacStore {
                 created_at,
                 created_by,
                 updated_at,
-                updated_by
+                updated_by,
+                row_hmac
             FROM (
                 SELECT * FROM direct_rules
                 UNION ALL
@@ -715,7 +760,7 @@ impl RbacStore for SqlRbacStore {
         Ok(row.try_into()?)
     }
 
-    async fn rule_create(&self, actor: AccountId, spec: RuleSpec, metadata: Metadata) -> CkResult<Rule> {
+    async fn rule_create(&self, actor: AccountId, spec: RuleSpec, metadata: Metadata) -> CkResult<RuleRow> {
         let rule_id = RuleId::new();
 
         let condition_json: Option<serde_json::Value> = match &spec.condition {
@@ -736,7 +781,7 @@ impl RbacStore for SqlRbacStore {
         )
         RETURNING
             id, short_id, raw_spec, spec_version, effect, permission, target_kind, pattern_raw,
-            condition, metadata, created_at, created_by, updated_at, updated_by
+            condition, metadata, created_at, created_by, updated_at, updated_by, row_hmac
     "#,
         );
 
@@ -753,7 +798,16 @@ impl RbacStore for SqlRbacStore {
             .fetch_one(&self.pool)
             .await?;
 
-        Ok(row.try_into()?)
+        Ok(row)
+    }
+
+    async fn rule_set_hmac(&self, rule_id: RuleId, hmac_hex: &str) -> CkResult<()> {
+        sqlx::query("UPDATE rbac_rules SET row_hmac = $2 WHERE id = $1")
+            .bind(rule_id)
+            .bind(hmac_hex)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     async fn rule_delete(&self, actor: AccountId, id: RuleId) -> CkResult<()> {
@@ -827,12 +881,17 @@ impl RbacStore for SqlRbacStore {
         Ok(items)
     }
 
-    async fn bind_rule_to_user(&self, actor: AccountId, rule_id: RuleId, account_id: AccountId) -> CkResult<()> {
-        // we need to add the role to rbac_account_rule table
+    async fn bind_rule_to_user(
+        &self,
+        actor: AccountId,
+        rule_id: RuleId,
+        account_id: AccountId,
+        row_hmac: Option<String>,
+    ) -> CkResult<()> {
         let sql = one_line_sql(
             r#"
-            INSERT INTO rbac_account_rules (account_id, rule_id, created_at, created_by)
-            VALUES ($1, $2, now(), $3)
+            INSERT INTO rbac_account_rules (account_id, rule_id, row_hmac, created_at, created_by)
+            VALUES ($1, $2, $4, now(), $3)
             ON CONFLICT (account_id, rule_id) DO NOTHING
         "#,
         );
@@ -841,6 +900,7 @@ impl RbacStore for SqlRbacStore {
             .bind(account_id)
             .bind(rule_id)
             .bind(actor)
+            .bind(row_hmac)
             .execute(&self.pool)
             .await?;
 
@@ -867,12 +927,17 @@ impl RbacStore for SqlRbacStore {
         Ok(())
     }
 
-    async fn bind_role_to_user(&self, actor: AccountId, role_id: RoleId, account_id: AccountId) -> CkResult<()> {
-        // we need to add the role to rbac_account_role table
+    async fn bind_role_to_user(
+        &self,
+        actor: AccountId,
+        role_id: RoleId,
+        account_id: AccountId,
+        row_hmac: Option<String>,
+    ) -> CkResult<()> {
         let sql = one_line_sql(
             r#"
-            INSERT INTO rbac_account_roles (account_id, role_id, created_at, created_by)
-            VALUES ($1, $2, now(), $3)
+            INSERT INTO rbac_account_roles (account_id, role_id, row_hmac, created_at, created_by)
+            VALUES ($1, $2, $4, now(), $3)
             ON CONFLICT (account_id, role_id) DO NOTHING
         "#,
         );
@@ -881,6 +946,7 @@ impl RbacStore for SqlRbacStore {
             .bind(account_id)
             .bind(role_id)
             .bind(actor)
+            .bind(row_hmac)
             .execute(&self.pool)
             .await?;
 
@@ -949,6 +1015,38 @@ impl RbacStore for SqlRbacStore {
             .execute(&self.pool)
             .await?;
         Ok(())
+    }
+
+    async fn get_active_rule_bindings(&self, account_id: AccountId) -> CkResult<Vec<RuleBindingRow>> {
+        let sql = one_line_sql(r#"
+            SELECT account_id, rule_id, valid_from, valid_until, row_hmac
+            FROM rbac_account_rules
+            WHERE account_id = $1
+              AND (valid_from  IS NULL OR valid_from  <= now())
+              AND (valid_until IS NULL OR now() < valid_until)
+        "#);
+        let rows = sqlx::query_as::<_, RuleBindingRow>(&sql)
+            .bind(account_id)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(CkError::from)?;
+        Ok(rows)
+    }
+
+    async fn get_active_role_bindings(&self, account_id: AccountId) -> CkResult<Vec<RoleBindingRow>> {
+        let sql = one_line_sql(r#"
+            SELECT account_id, role_id, valid_from, valid_until, row_hmac
+            FROM rbac_account_roles
+            WHERE account_id = $1
+              AND (valid_from  IS NULL OR valid_from  <= now())
+              AND (valid_until IS NULL OR now() < valid_until)
+        "#);
+        let rows = sqlx::query_as::<_, RoleBindingRow>(&sql)
+            .bind(account_id)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(CkError::from)?;
+        Ok(rows)
     }
 }
 
@@ -1162,21 +1260,48 @@ impl RbacStore for InMemoryRbacStore {
         Ok(rule.clone())
     }
 
-    async fn rule_create(&self, actor: AccountId, spec: RuleSpec, metadata: Metadata) -> CkResult<Rule> {
-        let new_rule = Rule {
-            id: RuleId::new(),
-            short_id: crate::global::short_id::ShortId::generate("rul_", 12),
-            spec: spec.clone(),
-            metadata,
+    async fn rule_create(&self, actor: AccountId, spec: RuleSpec, metadata: Metadata) -> CkResult<RuleRow> {
+        let id = RuleId::new();
+        let short_id = crate::global::short_id::ShortId::generate("rul_", 12);
+        let condition_json: Option<serde_json::Value> = match &spec.condition {
+            None => None,
+            Some(expr) => Some(serde_json::to_value(expr)?),
+        };
+        let row = RuleRow {
+            id,
+            short_id: short_id.clone(),
+            raw_spec: Some(spec.to_string()),
+            spec_version: 1,
+            effect: spec.effect.clone(),
+            permission: spec.permission.to_string(),
+            target_kind: spec.target.kind(),
+            pattern_raw: spec.target.pattern(),
+            condition: condition_json,
+            metadata: metadata.clone(),
             created_at: Utc::now(),
             created_by: actor,
             updated_at: None,
             updated_by: None,
+            row_hmac: None,
         };
+        let rule = Rule {
+            id,
+            short_id,
+            spec,
+            metadata,
+            created_at: row.created_at,
+            created_by: actor,
+            updated_at: None,
+            updated_by: None,
+            row_hmac: None,
+        };
+        self.rules.lock().insert(id, rule);
+        Ok(row)
+    }
 
-        let mut rules = self.rules.lock();
-        rules.insert(new_rule.id, new_rule.clone());
-        Ok(new_rule)
+    async fn rule_set_hmac(&self, _rule_id: RuleId, _hmac_hex: &str) -> CkResult<()> {
+        // In-memory store: signing slot is always empty in tests, so this is a no-op.
+        Ok(())
     }
 
     async fn rule_delete(&self, _actor: AccountId, id: RuleId) -> CkResult<()> {
@@ -1189,7 +1314,13 @@ impl RbacStore for InMemoryRbacStore {
         Ok(Vec::new())
     }
 
-    async fn bind_rule_to_user(&self, _actor: AccountId, rule_id: RuleId, account_id: AccountId) -> CkResult<()> {
+    async fn bind_rule_to_user(
+        &self,
+        _actor: AccountId,
+        rule_id: RuleId,
+        account_id: AccountId,
+        _row_hmac: Option<String>,
+    ) -> CkResult<()> {
         let mut actor_rules = self.actor_rules.lock();
         let rules = actor_rules.entry(account_id).or_default();
         if !rules.contains(&rule_id) {
@@ -1202,7 +1333,13 @@ impl RbacStore for InMemoryRbacStore {
         Ok(())
     }
 
-    async fn bind_role_to_user(&self, _actor: AccountId, role_id: RoleId, account_id: AccountId) -> CkResult<()> {
+    async fn bind_role_to_user(
+        &self,
+        _actor: AccountId,
+        role_id: RoleId,
+        account_id: AccountId,
+        _row_hmac: Option<String>,
+    ) -> CkResult<()> {
         let mut actor_roles = self.actor_roles.lock();
         let roles = actor_roles.entry(account_id).or_default();
         if !roles.contains(&role_id) {
@@ -1250,6 +1387,14 @@ impl RbacStore for InMemoryRbacStore {
     ) -> CkResult<()> {
         Ok(())
     }
+
+    async fn get_active_rule_bindings(&self, _account_id: AccountId) -> CkResult<Vec<RuleBindingRow>> {
+        Ok(vec![])
+    }
+
+    async fn get_active_role_bindings(&self, _account_id: AccountId) -> CkResult<Vec<RoleBindingRow>> {
+        Ok(vec![])
+    }
 }
 
 // ----------------------------------------------------------------------------------------------
@@ -1257,14 +1402,115 @@ impl RbacStore for InMemoryRbacStore {
 pub struct RbacManager {
     store: Arc<dyn RbacStore + Send + Sync>,
     cache: Arc<cache::RbacCache>,
+    signing_slot: Arc<crate::service::signing_key_slot::SigningKeySlot>,
 }
 
 impl RbacManager {
-    pub fn new(store: Arc<dyn RbacStore + Send + Sync>) -> Self {
+    pub fn new(
+        store: Arc<dyn RbacStore + Send + Sync>,
+        signing_slot: Arc<crate::service::signing_key_slot::SigningKeySlot>,
+    ) -> Self {
         RbacManager {
             store,
             cache: cache::RbacCache::new(cache::DEFAULT_TTL, cache::DEFAULT_MAX_SIZE),
+            signing_slot,
         }
+    }
+
+    // ------------------------------------------------------------------
+    // HMAC helpers
+    // ------------------------------------------------------------------
+
+    /// Verify each rule's stored HMAC against the computed one.
+    ///
+    /// - **Allow** rule with bad or absent HMAC: dropped (no access granted - fail closed).
+    /// - **Deny** rule with bad or absent HMAC: returns `Err` - the entire rule set is
+    ///   considered poisoned.  Dropping a deny rule would widen access under a
+    ///   broader allow rule, which is fail-open.  Instead, `is_allowed` must
+    ///   deny all access for the account and skip caching.
+    /// - Signing key not loaded: all rules pass through unchanged.
+    fn filter_verified_rules(&self, rules: Vec<Rule>) -> Result<Vec<Rule>, hierarkey_core::CkError> {
+        let Some(key) = self.signing_slot.peek() else {
+            return Ok(rules);
+        };
+        let mut verified = Vec::with_capacity(rules.len());
+        for rule in rules {
+            let Some(hmac_hex) = &rule.row_hmac else {
+                if rule.spec.effect == PolicyEffect::Deny {
+                    tracing::error!(
+                        rule_id = %rule.id,
+                        "SECURITY: deny rbac rule has no row_hmac -failing all access (fail closed)"
+                    );
+                    return Err(hierarkey_core::CkError::RowIntegrityViolation {
+                        kind: "rbac_rule",
+                        id: rule.id.to_string(),
+                    });
+                }
+                tracing::error!(
+                    rule_id = %rule.id,
+                    "SECURITY: rbac allow rule has no row_hmac -dropping (fail closed)"
+                );
+                continue;
+            };
+            let expected = match RowHmac::from_hex(hmac_hex) {
+                Ok(v) => v,
+                Err(_) => {
+                    if rule.spec.effect == PolicyEffect::Deny {
+                        tracing::error!(
+                            rule_id = %rule.id,
+                            "SECURITY: deny rbac rule has malformed row_hmac -failing all access (fail closed)"
+                        );
+                        return Err(hierarkey_core::CkError::RowIntegrityViolation {
+                            kind: "rbac_rule",
+                            id: rule.id.to_string(),
+                        });
+                    }
+                    tracing::error!(
+                        rule_id = %rule.id,
+                        "SECURITY: rbac allow rule has malformed row_hmac -dropping (fail closed)"
+                    );
+                    continue;
+                }
+            };
+            // Reconstruct the covered fields to recompute the HMAC.
+            let condition_json = rule.spec.condition.as_ref().and_then(|c| serde_json::to_value(c).ok());
+            let temp_row = crate::manager::rbac::rule::RuleRow {
+                id: rule.id,
+                short_id: rule.short_id.clone(),
+                raw_spec: None,
+                spec_version: 1,
+                effect: rule.spec.effect.clone(),
+                permission: rule.spec.permission.to_string(),
+                target_kind: rule.spec.target.kind(),
+                pattern_raw: rule.spec.target.pattern(),
+                condition: condition_json,
+                metadata: rule.metadata.clone(),
+                created_at: rule.created_at,
+                created_by: rule.created_by,
+                updated_at: rule.updated_at,
+                updated_by: rule.updated_by,
+                row_hmac: rule.row_hmac.clone(),
+            };
+            if sign_rule(&key, &temp_row) != expected {
+                if rule.spec.effect == PolicyEffect::Deny {
+                    tracing::error!(
+                        rule_id = %rule.id,
+                        "SECURITY: deny rbac rule integrity violation -failing all access (fail closed)"
+                    );
+                    return Err(hierarkey_core::CkError::RowIntegrityViolation {
+                        kind: "rbac_rule",
+                        id: rule.id.to_string(),
+                    });
+                }
+                tracing::error!(
+                    rule_id = %rule.id,
+                    "SECURITY: rbac allow rule integrity violation -dropping (fail closed)"
+                );
+                continue;
+            }
+            verified.push(rule);
+        }
+        Ok(verified)
     }
 
     pub async fn get_bindings_for_account(&self, account_id: AccountId) -> CkResult<AccountBindings> {
@@ -1275,11 +1521,104 @@ impl RbacManager {
         self.store.list_all_account_ids().await
     }
 
+    /// Verify the HMACs of all active bindings for an account.
+    ///
+    /// If the signing key is not loaded, verification is skipped (returns Ok).
+    /// Any binding with a NULL or invalid HMAC returns `Err(RowIntegrityViolation)`.
+    async fn verify_bindings_for_account(&self, account_id: AccountId) -> CkResult<()> {
+        let Some(key) = self.signing_slot.peek() else {
+            return Ok(());
+        };
+
+        let rule_bindings = self.store.get_active_rule_bindings(account_id).await?;
+        for b in &rule_bindings {
+            let Some(hmac_hex) = &b.row_hmac else {
+                tracing::error!(
+                    account_id = %account_id,
+                    rule_id = %b.rule_id,
+                    "SECURITY: rbac_account_rules binding has no row_hmac"
+                );
+                return Err(hierarkey_core::CkError::RowIntegrityViolation {
+                    kind: "rbac_account_rules",
+                    id: b.rule_id.to_string(),
+                });
+            };
+            let expected = RowHmac::from_hex(hmac_hex).map_err(|_| hierarkey_core::CkError::RowIntegrityViolation {
+                kind: "rbac_account_rules",
+                id: b.rule_id.to_string(),
+            })?;
+            if !verify_account_rule_binding(&key, account_id, b.rule_id, b.valid_from, b.valid_until, &expected) {
+                tracing::error!(
+                    account_id = %account_id,
+                    rule_id = %b.rule_id,
+                    "SECURITY: rbac_account_rules binding integrity violation"
+                );
+                return Err(hierarkey_core::CkError::RowIntegrityViolation {
+                    kind: "rbac_account_rules",
+                    id: b.rule_id.to_string(),
+                });
+            }
+        }
+
+        let role_bindings = self.store.get_active_role_bindings(account_id).await?;
+        for b in &role_bindings {
+            let Some(hmac_hex) = &b.row_hmac else {
+                tracing::error!(
+                    account_id = %account_id,
+                    role_id = %b.role_id,
+                    "SECURITY: rbac_account_roles binding has no row_hmac"
+                );
+                return Err(hierarkey_core::CkError::RowIntegrityViolation {
+                    kind: "rbac_account_roles",
+                    id: b.role_id.to_string(),
+                });
+            };
+            let expected = RowHmac::from_hex(hmac_hex).map_err(|_| hierarkey_core::CkError::RowIntegrityViolation {
+                kind: "rbac_account_roles",
+                id: b.role_id.to_string(),
+            })?;
+            if !verify_account_role_binding(&key, account_id, b.role_id, b.valid_from, b.valid_until, &expected) {
+                tracing::error!(
+                    account_id = %account_id,
+                    role_id = %b.role_id,
+                    "SECURITY: rbac_account_roles binding integrity violation"
+                );
+                return Err(hierarkey_core::CkError::RowIntegrityViolation {
+                    kind: "rbac_account_roles",
+                    id: b.role_id.to_string(),
+                });
+            }
+        }
+
+        Ok(())
+    }
+
     pub async fn is_allowed(&self, request: RbacAllowedRequest) -> CkResult<RbacAllowedResponse> {
         let rules: Vec<Rule> = match self.cache.get(request.subject) {
             Some(cached) => cached,
             None => {
-                let rules = self.store.get_rules_for_account(request.subject).await?;
+                // Verify binding integrity before fetching rules.  Any tampered binding
+                // denies all access and is not cached.
+                if let Err(_) = self.verify_bindings_for_account(request.subject).await {
+                    tracing::error!(
+                        account_id = %request.subject,
+                        "SECURITY: binding integrity violation -denying all access for account"
+                    );
+                    return Ok(RbacAllowedResponse { allowed: false, matched_rule: None });
+                }
+                let raw = self.store.get_rules_for_account(request.subject).await?;
+                // A tampered deny rule returns Err - deny all access and do NOT cache,
+                // so every request re-checks until the violation is resolved.
+                let rules = match self.filter_verified_rules(raw) {
+                    Ok(rules) => rules,
+                    Err(_) => {
+                        tracing::error!(
+                            account_id = %request.subject,
+                            "SECURITY: rbac deny rule integrity violation -denying all access for account"
+                        );
+                        return Ok(RbacAllowedResponse { allowed: false, matched_rule: None });
+                    }
+                };
                 self.cache.insert(request.subject, rules.clone());
                 rules
             }
@@ -1375,7 +1714,32 @@ impl RbacManager {
         let rules = match self.cache.get(request.subject) {
             Some(cached) => cached,
             None => {
-                let rules = self.store.get_rules_for_account(request.subject).await?;
+                if let Err(_) = self.verify_bindings_for_account(request.subject).await {
+                    tracing::error!(
+                        account_id = %request.subject,
+                        "SECURITY: binding integrity violation -denying all access for account"
+                    );
+                    return Ok(RbacExplainResponse {
+                        allowed: false,
+                        matched_rule: None,
+                        near_misses: vec![],
+                    });
+                }
+                let raw = self.store.get_rules_for_account(request.subject).await?;
+                let rules = match self.filter_verified_rules(raw) {
+                    Ok(rules) => rules,
+                    Err(_) => {
+                        tracing::error!(
+                            account_id = %request.subject,
+                            "SECURITY: rbac deny rule integrity violation -denying all access for account"
+                        );
+                        return Ok(RbacExplainResponse {
+                            allowed: false,
+                            matched_rule: None,
+                            near_misses: vec![],
+                        });
+                    }
+                };
                 self.cache.insert(request.subject, rules.clone());
                 rules
             }
@@ -1534,7 +1898,18 @@ impl RbacManager {
 
     pub async fn rule_create(&self, ctx: &CallContext, spec: RuleSpec, metadata: Metadata) -> CkResult<Rule> {
         let actor = ctx.actor.require_account_id().copied()?;
-        self.store.rule_create(actor, spec, metadata).await
+        let row = self.store.rule_create(actor, spec, metadata).await?;
+        // Sign the newly created rule if the signing key is loaded.
+        if let Some(key) = self.signing_slot.peek() {
+            let hmac = sign_rule(&key, &row);
+            let hmac_hex = hmac.to_hex();
+            // Best-effort: if the update fails, the rule is still returned unsigned.
+            let _ = self.store.rule_set_hmac(row.id, &hmac_hex).await;
+            let mut rule: Rule = row.try_into()?;
+            rule.row_hmac = Some(hmac_hex);
+            return Ok(rule);
+        }
+        Ok(row.try_into()?)
     }
 
     pub async fn rule_delete(&self, ctx: &CallContext, rule_id: RuleId) -> CkResult<()> {
@@ -1558,7 +1933,11 @@ impl RbacManager {
 
     pub async fn bind_rule_to_user(&self, ctx: &CallContext, rule_id: RuleId, account_id: AccountId) -> CkResult<()> {
         let actor = ctx.actor.require_account_id().copied()?;
-        let result = self.store.bind_rule_to_user(actor, rule_id, account_id).await;
+        let row_hmac = self
+            .signing_slot
+            .peek()
+            .map(|key| sign_account_rule_binding(&key, account_id, rule_id, None, None).to_hex());
+        let result = self.store.bind_rule_to_user(actor, rule_id, account_id, row_hmac).await;
         if result.is_ok() {
             self.cache.invalidate(account_id);
         }
@@ -1576,7 +1955,11 @@ impl RbacManager {
 
     pub async fn bind_role_to_user(&self, ctx: &CallContext, role_id: RoleId, account_id: AccountId) -> CkResult<()> {
         let actor = ctx.actor.require_account_id().copied()?;
-        let result = self.store.bind_role_to_user(actor, role_id, account_id).await;
+        let row_hmac = self
+            .signing_slot
+            .peek()
+            .map(|key| sign_account_role_binding(&key, account_id, role_id, None, None).to_hex());
+        let result = self.store.bind_role_to_user(actor, role_id, account_id, row_hmac).await;
         if result.is_ok() {
             self.cache.invalidate(account_id);
         }

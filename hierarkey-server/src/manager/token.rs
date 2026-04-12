@@ -603,6 +603,7 @@ mod tests {
             mfa_backup_codes: None,
             client_cert_fingerprint: None,
             client_cert_subject: None,
+            row_hmac: None,
         }
     }
 

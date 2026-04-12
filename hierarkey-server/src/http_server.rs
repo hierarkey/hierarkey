@@ -16,6 +16,8 @@ use crate::http_server::middleware::{
 use crate::http_server::nonce_cache::NonceCache;
 use crate::manager::account::AccountId;
 use crate::manager::federated_identity::FederatedIdentityManager;
+use crate::manager::signing_key::SigningKeyManager;
+use crate::service::signing_key_slot::SigningKeySlot;
 use crate::service::{
     AccountService, AuditService, AuthService, KekService, LicenseService, MasterKeyService, NamespaceService,
     RbacService, SecretService, TokenService,
@@ -119,6 +121,15 @@ pub struct AppState {
 
     /// Manager for the `federated_identities` table.
     pub federated_identity_manager: std::sync::Arc<FederatedIdentityManager>,
+
+    /// Shared signing key slot, loaded after the master key is unlocked.
+    /// Held here so CLI commands (e.g. `recover-account`) can load a signing key
+    /// into it without going through the account/RBAC manager internals.
+    pub signing_slot: Arc<SigningKeySlot>,
+
+    /// Manager for the `signing_keys` table, used by CLI to fetch and decrypt
+    /// the encrypted signing key during recovery.
+    pub signing_key_manager: Arc<SigningKeyManager>,
 
     /// Global configuration available for reading (preferably not needed)
     pub config: Config,

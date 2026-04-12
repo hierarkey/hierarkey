@@ -4,6 +4,7 @@
 use crate::audit_context::CallContext;
 #[cfg(test)]
 use crate::global::DEFAULT_OFFSET_VALUE;
+use crate::global::row_hmac::{sign_account, verify_account, RowHmac};
 use crate::global::short_id::ShortId;
 use crate::global::uuid_id::Identifier;
 use crate::global::{DEFAULT_LIMIT_VALUE, MAX_LIMIT_VALUE};
@@ -11,6 +12,7 @@ use crate::manager::secret::sql_store::escape_like;
 use crate::service::account::{
     AccountData, AccountSearchQuery, AccountSortBy, CustomAccountData, CustomServiceAccountData,
 };
+use crate::service::signing_key_slot::SigningKeySlot;
 use crate::{one_line_sql, uuid_id};
 use clap::ValueEnum;
 use hierarkey_core::error::auth::{AuthError, AuthFailReason};
@@ -20,12 +22,14 @@ use hierarkey_core::resources::AccountName;
 use hierarkey_core::{CkError, CkResult, Metadata};
 #[cfg(test)]
 use parking_lot::Mutex;
+use parking_lot::RwLock;
 use password_hash::phc::PasswordHash;
 use password_hash::{PasswordHasher, PasswordVerifier};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Postgres, QueryBuilder};
+use std::collections::HashMap;
 #[cfg(test)]
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use tracing::{error, trace};
@@ -111,6 +115,10 @@ pub enum AccountStatus {
     Locked,
     Disabled,
     Deleted,
+    /// Set automatically by the server when a row-level HMAC integrity check
+    /// fails on read.  The account cannot be used until an administrator
+    /// investigates and manually recovers or deletes it.
+    Tampered,
 }
 
 impl std::fmt::Display for AccountStatus {
@@ -120,6 +128,7 @@ impl std::fmt::Display for AccountStatus {
             AccountStatus::Locked => write!(f, "locked"),
             AccountStatus::Disabled => write!(f, "disabled"),
             AccountStatus::Deleted => write!(f, "deleted"),
+            AccountStatus::Tampered => write!(f, "tampered"),
         }
     }
 }
@@ -171,6 +180,12 @@ pub struct Account {
     pub updated_by: Option<AccountId>,
     pub deleted_at: Option<DateTime<Utc>>,
     pub deleted_by: Option<AccountId>,
+
+    /// BLAKE3-keyed HMAC over the security-critical fields of this row.
+    /// `None` means the row predates HMAC enforcement or was created before a
+    /// signing key was provisioned.
+    #[sqlx(default)]
+    pub row_hmac: Option<String>,
 }
 
 /// A resolved reference to another account, carrying both the display ID and human-readable name.
@@ -312,6 +327,7 @@ pub trait AccountStore: Send + Sync {
         enabled: bool,
         secret: Option<String>,
     ) -> CkResult<()>;
+
 }
 
 pub struct SqlAccountStore {
@@ -337,7 +353,8 @@ impl AccountStore for SqlAccountStore {
             last_login_at, failed_login_attempts, password_changed_at, must_change_password,
             full_name, email, metadata, passphrase_hash, public_key,
             client_cert_fingerprint, client_cert_subject,
-            created_at, created_by, updated_at, updated_by, deleted_at, deleted_by
+            created_at, created_by, updated_at, updated_by, deleted_at, deleted_by,
+            row_hmac
         FROM accounts
         WHERE id = $1 AND deleted_at IS NULL
         LIMIT 1
@@ -362,7 +379,8 @@ impl AccountStore for SqlAccountStore {
             last_login_at, failed_login_attempts, password_changed_at, must_change_password,
             full_name, email, metadata, passphrase_hash, public_key,
             client_cert_fingerprint, client_cert_subject,
-            created_at, created_by, updated_at, updated_by, deleted_at, deleted_by
+            created_at, created_by, updated_at, updated_by, deleted_at, deleted_by,
+            row_hmac
         FROM accounts
         WHERE lower(name) = lower($1) AND deleted_at IS NULL
         LIMIT 1
@@ -391,7 +409,7 @@ impl AccountStore for SqlAccountStore {
             last_login_at, failed_login_attempts, password_changed_at, must_change_password,
             full_name, email, metadata,
             deleted_at, passphrase_hash, public_key,
-            created_by
+            created_by, row_hmac
         )
         VALUES (
             $1,$2,$3,
@@ -401,7 +419,7 @@ impl AccountStore for SqlAccountStore {
             $12,$13,$14,$15,
             $16,$17,$18,
             $19,$20,$21,
-            $22
+            $22,$23
         )
     "#,
         ))
@@ -427,6 +445,7 @@ impl AccountStore for SqlAccountStore {
         .bind(&account.passphrase_hash)
         .bind(&account.public_key)
         .bind(account.created_by)
+        .bind(&account.row_hmac)
         .execute(&self.pool)
         .await?;
 
@@ -449,7 +468,7 @@ impl AccountStore for SqlAccountStore {
             status_reason = $5,
             locked_until = $6,
             status_changed_at = $7,
-            status_changed_by = $8,
+            status_changed_by = COALESCE($8, status_changed_by, (SELECT id FROM accounts WHERE name = '$system' LIMIT 1)),
 
             password_hash = COALESCE($9, password_hash),
             mfa_enabled = $10,
@@ -469,7 +488,9 @@ impl AccountStore for SqlAccountStore {
             updated_by = $22,
 
             passphrase_hash = COALESCE($20, passphrase_hash),
-            public_key = COALESCE($21, public_key)
+            public_key = COALESCE($21, public_key),
+
+            row_hmac = $23
         WHERE id = $1
         "#,
         ))
@@ -495,6 +516,7 @@ impl AccountStore for SqlAccountStore {
         .bind(&account.passphrase_hash)
         .bind(&account.public_key)
         .bind(account.updated_by)
+        .bind(&account.row_hmac)
         .execute(&self.pool)
         .await?;
 
@@ -512,8 +534,8 @@ impl AccountStore for SqlAccountStore {
             client_cert_fingerprint, client_cert_subject,
             last_login_at, failed_login_attempts, password_changed_at, must_change_password,
             full_name, email, metadata, passphrase_hash, public_key,
-            client_cert_fingerprint, client_cert_subject,
-            created_at, created_by, updated_at, updated_by, deleted_at, deleted_by
+            created_at, created_by, updated_at, updated_by, deleted_at, deleted_by,
+            row_hmac
         FROM accounts
         WHERE client_cert_fingerprint = $1 AND deleted_at IS NULL
         LIMIT 1
@@ -580,7 +602,7 @@ impl AccountStore for SqlAccountStore {
             status_reason = $3,
             locked_until = $4,
             status_changed_at = now(),
-            status_changed_by = $5,
+            status_changed_by = COALESCE($5, (SELECT id FROM accounts WHERE name = '$system' LIMIT 1)),
             updated_at = now()
         WHERE id = $1
           AND deleted_at IS NULL
@@ -940,6 +962,7 @@ impl AccountStore for SqlAccountStore {
             .await?;
         Ok(())
     }
+
 }
 
 #[cfg(test)]
@@ -1002,6 +1025,7 @@ impl InMemoryAccountStore {
             updated_by: None,
             deleted_at: None,
             deleted_by: None,
+            row_hmac: None,
         };
 
         self.accounts.lock().insert(account_id, account);
@@ -1295,37 +1319,157 @@ impl AccountStore for InMemoryAccountStore {
         }
         Ok(())
     }
+
 }
 
 pub struct AccountManager {
     store: Arc<dyn AccountStore>,
+    signing_slot: Arc<SigningKeySlot>,
+    /// In-process cache of HMAC-verified accounts, keyed by account ID.
+    /// Populated after every successful integrity check; evicted on every write.
+    /// This avoids repeated DB round-trips and HMAC re-checks for hot read paths.
+    cache: RwLock<HashMap<AccountId, Account>>,
 }
 
 impl AccountManager {
-    pub fn new(store: Arc<dyn AccountStore>) -> Self {
-        Self { store }
+    pub fn new(store: Arc<dyn AccountStore>, signing_slot: Arc<SigningKeySlot>) -> Self {
+        Self {
+            store,
+            signing_slot,
+            cache: RwLock::new(HashMap::new()),
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Cache helpers
+    // ------------------------------------------------------------------
+
+    fn cache_insert(&self, account: &Account) {
+        self.cache.write().insert(account.id, account.clone());
+    }
+
+    fn cache_evict(&self, account_id: AccountId) {
+        self.cache.write().remove(&account_id);
+    }
+
+    fn cache_get(&self, account_id: AccountId) -> Option<Account> {
+        self.cache.read().get(&account_id).cloned()
+    }
+
+    // ------------------------------------------------------------------
+    // HMAC helpers
+    // ------------------------------------------------------------------
+
+    /// Sign `account.row_hmac` with the current key, if one is loaded.
+    /// If no key is loaded the field is left unchanged (preserves existing HMAC
+    /// for re-sign scenarios or keeps `None` for brand-new rows pre-key).
+    fn sign_if_keyed(&self, account: &mut Account) {
+        if let Some(key) = self.signing_slot.peek() {
+            let hmac = sign_account(&key, account);
+            account.row_hmac = Some(hmac.to_hex());
+        }
+    }
+
+    /// Verify `account.row_hmac` against the current key.
+    ///
+    /// - Key loaded + HMAC present: verify; error on mismatch.
+    /// - Key loaded + HMAC absent: treated as an integrity violation.
+    /// - Key not loaded: skip entirely.
+    fn hmac_check(&self, account: &Account) -> CkResult<()> {
+        let Some(key) = self.signing_slot.peek() else {
+            return Ok(());
+        };
+        let Some(stored_hex) = &account.row_hmac else {
+            tracing::error!(
+                account_id = %account.id,
+                "SECURITY: account has no row_hmac - treating as integrity violation"
+            );
+            return Err(CkError::RowIntegrityViolation {
+                kind: "account",
+                id: account.id.to_string(),
+            });
+        };
+        let expected = RowHmac::from_hex(stored_hex).map_err(|_| CkError::RowIntegrityViolation {
+            kind: "account",
+            id: account.id.to_string(),
+        })?;
+        if !verify_account(&key, account, &expected) {
+            return Err(CkError::RowIntegrityViolation {
+                kind: "account",
+                id: account.id.to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Called when `hmac_check` returns `RowIntegrityViolation`.
+    ///
+    /// Logs a security event, best-effort marks the account as `Tampered` in
+    /// the database (so the status survives a server restart), evicts any cached
+    /// copy, and returns the integrity-violation error to the caller.
+    async fn mark_tampered(&self, account: &Account) -> CkError {
+        tracing::error!(
+            account_id = %account.id,
+            account_name = %account.name,
+            "SECURITY: row integrity violation; marking account as tampered"
+        );
+        // Evict the stale cache entry so subsequent reads don't serve a verified-but-now-tampered copy.
+        self.cache_evict(account.id);
+        // Best-effort: if the DB write fails we still surface the error upstream.
+        let _ = self
+            .store
+            .set_status(
+                &CallContext::system(),
+                account.id,
+                AccountStatus::Tampered,
+                Some("automatic: row integrity check failed".to_string()),
+            )
+            .await;
+        CkError::RowIntegrityViolation {
+            kind: "account",
+            id: account.id.to_string(),
+        }
+    }
+
+    /// Verify integrity of `account` and, on failure, persist the `Tampered`
+    /// status and return an error.  On success, populate the cache.
+    async fn verify_integrity(&self, account: &Account) -> CkResult<()> {
+        if let Err(_) = self.hmac_check(account) {
+            return Err(self.mark_tampered(account).await);
+        }
+        self.cache_insert(account);
+        Ok(())
     }
 
     pub async fn find_account_by_id(&self, account_id: AccountId) -> CkResult<Option<Account>> {
-        self.store.find_by_id(account_id).await
+        // Cache hit: return a previously HMAC-verified copy without touching the DB.
+        if let Some(cached) = self.cache_get(account_id) {
+            return Ok(Some(cached));
+        }
+        let account = self.store.find_by_id(account_id).await?;
+        if let Some(ref a) = account {
+            // verify_integrity inserts into cache on success.
+            self.verify_integrity(a).await?;
+        }
+        Ok(account)
     }
 
     pub async fn find_account_by_name(&self, name: &AccountName) -> CkResult<Option<Account>> {
-        self.store.find_by_name(name).await
+        // Cannot use the ID-keyed cache here; load from DB, verify, then cache by ID.
+        let account = self.store.find_by_name(name).await?;
+        if let Some(ref a) = account {
+            // verify_integrity inserts into cache on success.
+            self.verify_integrity(a).await?;
+        }
+        Ok(account)
     }
 
     pub async fn find_account_by_cert_fingerprint(&self, fingerprint: &str) -> CkResult<Option<Account>> {
-        self.store.find_by_cert_fingerprint(fingerprint).await
-    }
-
-    pub async fn set_client_cert(
-        &self,
-        ctx: &CallContext,
-        account_id: AccountId,
-        fingerprint: Option<String>,
-        subject: Option<String>,
-    ) -> CkResult<()> {
-        self.store.set_client_cert(ctx, account_id, fingerprint, subject).await
+        let account = self.store.find_by_cert_fingerprint(fingerprint).await?;
+        if let Some(ref a) = account {
+            self.verify_integrity(a).await?;
+        }
+        Ok(account)
     }
 
     pub async fn revoke_admin(&self, ctx: &CallContext, account_id: AccountId) -> CkResult<()> {
@@ -1343,6 +1487,9 @@ impl AccountManager {
         account.failed_login_attempts = 0;
         account.locked_until = None;
 
+        // last_login_at / failed_login_attempts / locked_until are not HMAC-covered,
+        // so the stored HMAC remains valid.  Evict so the cache reflects the new values.
+        self.cache_evict(account_id);
         self.store.update_account(ctx, &account).await?;
         Ok(())
     }
@@ -1370,6 +1517,9 @@ impl AccountManager {
             );
         }
 
+        // failed_login_attempts / locked_until are not HMAC-covered; evict so the
+        // cache reflects the new values.
+        self.cache_evict(account_id);
         self.store.update_account(ctx, &account).await?;
         Ok(())
     }
@@ -1388,7 +1538,8 @@ impl AccountManager {
         updated_account.must_change_password = false;
         updated_account.updated_at = Some(Utc::now());
 
-        self.store.update_account(ctx, &updated_account).await?;
+        // password_hash is HMAC-covered; re-sign via the public update_account wrapper.
+        self.update_account(ctx, &updated_account).await?;
         Ok(())
     }
 
@@ -1479,6 +1630,7 @@ impl AccountManager {
             mfa_backup_codes: None,
             client_cert_fingerprint: None,
             client_cert_subject: None,
+            row_hmac: None,
         })
     }
 
@@ -1507,7 +1659,8 @@ impl AccountManager {
             }
             .into());
         }
-        let account = self.create_impl(ctx, data).await?;
+        let mut account = self.create_impl(ctx, data).await?;
+        self.sign_if_keyed(&mut account);
 
         self.store.create_account(ctx, &account).await?;
         Ok(account)
@@ -1542,20 +1695,10 @@ impl AccountManager {
     }
 
     pub async fn update_account(&self, ctx: &CallContext, account: &Account) -> CkResult<()> {
-        self.store.update_account(ctx, account).await
-    }
-
-    pub async fn delete_account(&self, ctx: &CallContext, account_id: AccountId) -> CkResult<()> {
-        self.store.delete_account(ctx, account_id).await
-    }
-
-    pub async fn set_mfa_backup_codes(
-        &self,
-        ctx: &CallContext,
-        account_id: AccountId,
-        codes_json: Option<String>,
-    ) -> CkResult<()> {
-        self.store.set_mfa_backup_codes(ctx, account_id, codes_json).await
+        let mut account = account.clone();
+        self.sign_if_keyed(&mut account);
+        self.cache_evict(account.id);
+        self.store.update_account(ctx, &account).await
     }
 
     pub async fn set_mfa_enabled(
@@ -1565,7 +1708,18 @@ impl AccountManager {
         enabled: bool,
         secret: Option<String>,
     ) -> CkResult<()> {
-        self.store.set_mfa_enabled(ctx, account_id, enabled, secret).await
+        // Fetch + full update so that the HMAC is recomputed over the new mfa fields.
+        let mut account = self.try_get_account(account_id).await?;
+        account.mfa_enabled = enabled;
+        if enabled {
+            if secret.is_some() {
+                account.mfa_secret = secret;
+            }
+        } else {
+            account.mfa_secret = None;
+            account.mfa_backup_codes = None;
+        }
+        self.update_account(ctx, &account).await
     }
 
     fn create_password_hash(&self, password: &Password) -> CkResult<String> {
@@ -1596,6 +1750,8 @@ impl AccountManager {
         account.must_change_password = must_change_pwd;
         account.updated_at = Some(Utc::now());
 
+        // must_change_password is not HMAC-covered; evict so the cache reflects the new value.
+        self.cache_evict(account_id);
         self.store.update_account(ctx, &account).await?;
         Ok(())
     }
@@ -1632,7 +1788,8 @@ impl AccountManager {
         account.status = AccountStatus::Disabled;
         account.status_changed_at = Some(Utc::now());
 
-        self.store.update_account(ctx, &account).await?;
+        // status is HMAC-covered; re-sign via update_account (also evicts cache).
+        self.update_account(ctx, &account).await?;
         Ok(())
     }
 
@@ -1658,7 +1815,8 @@ impl AccountManager {
         account.status = AccountStatus::Active;
         account.status_changed_at = Some(Utc::now());
 
-        self.store.update_account(ctx, &account).await?;
+        // status is HMAC-covered; re-sign via update_account (also evicts cache).
+        self.update_account(ctx, &account).await?;
         Ok(())
     }
 
@@ -1692,7 +1850,8 @@ impl AccountManager {
         account.status_changed_at = Some(Utc::now());
         account.status_changed_by = ctx.actor.account_id().copied();
 
-        self.store.update_account(ctx, &account).await?;
+        // status is HMAC-covered; re-sign via update_account (also evicts cache).
+        self.update_account(ctx, &account).await?;
         Ok(())
     }
 
@@ -1719,10 +1878,72 @@ impl AccountManager {
         account.status_changed_at = Some(Utc::now());
         account.status_changed_by = ctx.actor.account_id().copied();
 
-        self.store.update_account(ctx, &account).await?;
+        // status is HMAC-covered; re-sign via update_account (also evicts cache).
+        self.update_account(ctx, &account).await?;
         Ok(())
     }
+
+    pub async fn set_client_cert(
+        &self,
+        ctx: &CallContext,
+        account_id: AccountId,
+        fingerprint: Option<String>,
+        subject: Option<String>,
+    ) -> CkResult<()> {
+        self.cache_evict(account_id);
+        self.store.set_client_cert(ctx, account_id, fingerprint, subject).await
+    }
+
+    pub async fn set_mfa_backup_codes(
+        &self,
+        ctx: &CallContext,
+        account_id: AccountId,
+        codes_json: Option<String>,
+    ) -> CkResult<()> {
+        self.cache_evict(account_id);
+        self.store.set_mfa_backup_codes(ctx, account_id, codes_json).await
+    }
+
+    pub async fn delete_account(&self, ctx: &CallContext, account_id: AccountId) -> CkResult<()> {
+        self.cache_evict(account_id);
+        self.store.delete_account(ctx, account_id).await
+    }
+
+    /// Recover a `Tampered` account (CLI break-glass path).
+    ///
+    /// Loads the account directly from the store (bypasses cache and HMAC check),
+    /// resets its status to `Active`, then calls `update_account` which:
+    ///
+    /// - Re-signs `row_hmac` if a signing key is loaded in the slot.
+    /// - Stores the updated row and evicts the cache.
+    ///
+    /// **This must only be called after the signing key has been loaded into the
+    /// signing slot** (i.e. after the master key is unlocked in the CLI).
+    /// Without a signing key, `update_account` is a no-op for the HMAC, so the
+    /// stale or tampered `row_hmac` is written back, and the server will immediately
+    /// re-mark the account as tampered on the next load.
+    pub async fn recover_account(&self, ctx: &CallContext, account_id: AccountId) -> CkResult<()> {
+        let mut account = self.store.find_by_id(account_id).await?.ok_or_else(|| CkError::ResourceNotFound {
+            kind: "account",
+            id: account_id.to_string(),
+        })?;
+
+        if account.status != AccountStatus::Tampered {
+            return Err(hierarkey_core::error::validation::ValidationError::InvalidOperation {
+                message: format!("account status is '{}', not 'tampered'", account.status),
+            }
+            .into());
+        }
+
+        account.status = AccountStatus::Active;
+        account.status_changed_at = Some(Utc::now());
+        account.status_changed_by = ctx.actor.account_id().copied();
+
+        // update_account re-signs (if signing key is loaded) and evicts the cache.
+        self.update_account(ctx, &account).await
+    }
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -1733,7 +1954,8 @@ mod tests {
     use password_hash::PasswordHasher;
 
     fn make_manager() -> AccountManager {
-        AccountManager::new(Arc::new(InMemoryAccountStore::new()))
+        let signing_slot = Arc::new(crate::service::signing_key_slot::SigningKeySlot::new());
+        AccountManager::new(Arc::new(InMemoryAccountStore::new()), signing_slot)
     }
 
     fn sys_ctx() -> CallContext {

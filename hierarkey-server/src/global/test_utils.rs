@@ -9,6 +9,8 @@ use crate::manager::kek::{InMemoryKekStore, KekManager};
 use crate::manager::masterkey::InMemoryMasterKeyStore;
 use crate::manager::namespace::{InMemoryNamespaceStore, NamespaceManager};
 use crate::manager::rbac::InMemoryRbacStore;
+use crate::manager::signing_key::{InMemorySigningKeyStore, SigningKeyManager};
+use crate::service::signing_key_slot::SigningKeySlot;
 use crate::manager::secret::memory_store::InMemorySecretStore;
 use crate::manager::token::InMemoryTokenStore;
 use crate::service::masterkey::MasterKeyProviderType;
@@ -51,10 +53,11 @@ pub fn create_mock_app_state() -> AppState {
     let account_store = Arc::new(InMemoryAccountStore::new());
     account_store.seed_admin(system_account_id);
     let store = account_store;
-    let account_manager = Arc::new(AccountManager::new(store));
+    let signing_slot = Arc::new(SigningKeySlot::new());
+    let account_manager = Arc::new(AccountManager::new(store, signing_slot));
 
     let store = Arc::new(InMemoryRbacStore::new());
-    let rbac_manager = Arc::new(RbacManager::new(store));
+    let rbac_manager = Arc::new(RbacManager::new(store, Arc::new(SigningKeySlot::new())));
 
     let kek_service = Arc::new(KekService::new(
         kek_manager.clone(),
@@ -112,5 +115,9 @@ pub fn create_mock_app_state() -> AppState {
         federated_identity_manager: std::sync::Arc::new(
             crate::manager::federated_identity::FederatedIdentityManager::new(pool_for_fi),
         ),
+        signing_slot: Arc::new(SigningKeySlot::new()),
+        signing_key_manager: Arc::new(SigningKeyManager::new(
+            Arc::new(InMemorySigningKeyStore::new()),
+        )),
     }
 }

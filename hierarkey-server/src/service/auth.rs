@@ -432,7 +432,8 @@ mod tests {
 
     fn make_svc() -> (AuthService, Arc<InMemoryAccountStore>, Arc<InMemoryTokenStore>) {
         let account_store = Arc::new(InMemoryAccountStore::new());
-        let account_manager = Arc::new(AccountManager::new(account_store.clone()));
+        let signing_slot = Arc::new(crate::service::signing_key_slot::SigningKeySlot::new());
+        let account_manager = Arc::new(AccountManager::new(account_store.clone(), signing_slot));
         let token_store = Arc::new(InMemoryTokenStore::new());
         let token_manager = Arc::new(TokenManager::new(token_store.clone()));
         let config = AuthConfig::default();
@@ -472,6 +473,7 @@ mod tests {
             updated_by: None,
             deleted_at: None,
             deleted_by: None,
+            row_hmac: None,
         }
     }
 

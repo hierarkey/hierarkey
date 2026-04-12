@@ -85,6 +85,12 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "0085_namespace_created_updated_by",
         include_str!("../migrations/0085_namespace_created_updated_by.sql"),
     ),
+    ("0086_signing_key", include_str!("../migrations/0086_signing_key.sql")),
+    ("0087_row_hmac_columns", include_str!("../migrations/0087_row_hmac_columns.sql")),
+    (
+        "0088_account_status_tampered",
+        include_str!("../migrations/0088_account_status_tampered.sql"),
+    ),
 ];
 
 /// Returns true if a migration must run outside a transaction.

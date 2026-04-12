@@ -526,6 +526,14 @@ impl MasterKeyRetrievable for MasterKeyService {
     }
 }
 
+impl MasterKeyService {
+    /// Get the decrypted crypto handle for a master key (must be loaded and unlocked).
+    /// Exposed for the CLI recovery path.
+    pub fn get_crypto_handle(&self, master_key: &MasterKey) -> CkResult<MasterKeyCryptoHandle> {
+        self.crypto_for(master_key)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
