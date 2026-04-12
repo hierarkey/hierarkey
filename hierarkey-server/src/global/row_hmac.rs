@@ -39,6 +39,7 @@ use crate::rbac::{RoleId, RuleId, TargetKind};
 use chrono::{DateTime, Utc};
 use hierarkey_core::CkResult;
 use hierarkey_core::error::crypto::CryptoError;
+use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
 // -- Context strings (domain separators) --
@@ -60,8 +61,16 @@ pub const PAT_HMAC_CTX: &str = "hierarkey:pat:v1";
 /// A 32-byte BLAKE3-keyed MAC over a canonical row encoding.
 ///
 /// Stored in the database as a 64-character lowercase hex string.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct RowHmac(pub [u8; 32]);
+
+impl PartialEq for RowHmac {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.ct_eq(&other.0).into()
+    }
+}
+
+impl Eq for RowHmac {}
 
 impl RowHmac {
     /// Encode as a lowercase hex string for storage in the database.
@@ -221,7 +230,7 @@ pub fn sign_account(key: &SigningKey, account: &Account) -> RowHmac {
 /// Returns `true` if the MAC matches; `false` if the row has been tampered with
 /// or was signed with a different key.
 pub fn verify_account(key: &SigningKey, account: &Account, expected: &RowHmac) -> bool {
-    sign_account(key, account) == *expected
+    sign_account(key, account).0.ct_eq(&expected.0).into()
 }
 
 // -- RBAC rule --
@@ -246,7 +255,7 @@ pub fn sign_rule(key: &SigningKey, rule: &RuleRow) -> RowHmac {
 
 /// Verify the HMAC for an `rbac_rules` row.
 pub fn verify_rule(key: &SigningKey, rule: &RuleRow, expected: &RowHmac) -> bool {
-    sign_rule(key, rule) == *expected
+    sign_rule(key, rule).0.ct_eq(&expected.0).into()
 }
 
 // -- RBAC account -> rule binding --
@@ -280,7 +289,10 @@ pub fn verify_account_rule_binding(
     valid_until: Option<DateTime<Utc>>,
     expected: &RowHmac,
 ) -> bool {
-    sign_account_rule_binding(key, account_id, rule_id, valid_from, valid_until) == *expected
+    sign_account_rule_binding(key, account_id, rule_id, valid_from, valid_until)
+        .0
+        .ct_eq(&expected.0)
+        .into()
 }
 
 // -- RBAC account -> role binding --
@@ -310,7 +322,10 @@ pub fn verify_account_role_binding(
     valid_until: Option<DateTime<Utc>>,
     expected: &RowHmac,
 ) -> bool {
-    sign_account_role_binding(key, account_id, role_id, valid_from, valid_until) == *expected
+    sign_account_role_binding(key, account_id, role_id, valid_from, valid_until)
+        .0
+        .ct_eq(&expected.0)
+        .into()
 }
 
 // -- RBAC role -> rule association --
@@ -326,7 +341,7 @@ pub fn sign_role_rule(key: &SigningKey, role_id: RoleId, rule_id: RuleId) -> Row
 
 /// Verify the HMAC for an `rbac_role_rules` row.
 pub fn verify_role_rule(key: &SigningKey, role_id: RoleId, rule_id: RuleId, expected: &RowHmac) -> bool {
-    sign_role_rule(key, role_id, rule_id) == *expected
+    sign_role_rule(key, role_id, rule_id).0.ct_eq(&expected.0).into()
 }
 
 // -- Personal Access Token --
@@ -363,7 +378,10 @@ pub fn verify_pat(
     revoked_at: Option<DateTime<Utc>>,
     expected: &RowHmac,
 ) -> bool {
-    sign_pat(key, id, account_id, expires_at, purpose, revoked_at) == *expected
+    sign_pat(key, id, account_id, expires_at, purpose, revoked_at)
+        .0
+        .ct_eq(&expected.0)
+        .into()
 }
 
 // ---------------------------------------------------------------------------
