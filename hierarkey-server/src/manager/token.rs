@@ -39,8 +39,8 @@ const ALL_TOKEN_PREFIXES: &[&str] = &[
 ];
 const MIN_DESCRIPTION_LENGTH: usize = 1;
 const MAX_DESCRIPTION_LENGTH: usize = 200;
-const MIN_TTL_MINUTES: i64 = 1;
-const MAX_TTL_MINUTES: i64 = 24 * 60 * 7; // 7 days max
+pub const MIN_TTL_MINUTES: i64 = 1;
+pub const MAX_TTL_MINUTES: i64 = 24 * 60 * 7; // 7 days max
 
 /// Purpose of a token — controls which endpoints it may be used on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]

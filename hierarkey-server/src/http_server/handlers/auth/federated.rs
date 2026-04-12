@@ -54,10 +54,13 @@ pub(crate) async fn federated(
         }
     };
 
-    let access_ttl = req
-        .ttl_minutes
-        .map(|t| t as i64)
-        .unwrap_or(state.auth_service.access_token_ttl_minutes);
+    let access_ttl = match req.ttl_minutes {
+        Some(t) if t == 0 || t as i64 > crate::manager::token::MAX_TTL_MINUTES => {
+            return Err(HttpError::bad_request(ctx, "ttl_minutes out of range"));
+        }
+        Some(t) => t as i64,
+        None => state.auth_service.access_token_ttl_minutes,
+    };
 
     // Find the configured provider.
     let provider = state
