@@ -14,6 +14,7 @@ pub mod masterkey;
 pub mod namespace;
 pub mod rbac;
 mod secret;
+pub mod signing_key_slot;
 mod token;
 
 use crate::http_server::api_error::HttpError;

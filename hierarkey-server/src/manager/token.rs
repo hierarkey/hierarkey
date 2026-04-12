@@ -2,10 +2,12 @@
 // Copyright (C) 2025-2026 Joshua Thijssen <jthijssen@hierarkey.com>
 
 use crate::audit_context::CallContext;
+use crate::global::row_hmac::{RowHmac, sign_pat, verify_pat};
 use crate::global::short_id::ShortId;
 use crate::global::uuid_id::Identifier;
 use crate::http_server::handlers::auth_response::AuthScope;
 use crate::manager::account::AccountId;
+use crate::service::signing_key_slot::SigningKeySlot;
 use crate::{one_line_sql, uuid_id};
 use base64::Engine;
 use chrono::{DateTime, Duration, Utc};
@@ -88,6 +90,8 @@ pub trait TokenStore: Send + Sync {
         limit: usize,
         offset: usize,
     ) -> CkResult<(Vec<PersonalAccessToken>, usize)>;
+    /// Update only the `row_hmac` column for a PAT (used after revocation re-signing).
+    async fn update_pat_hmac(&self, token_id: PatId, hmac_hex: &str) -> CkResult<()>;
 }
 
 #[derive(Debug, Clone)]
@@ -105,6 +109,8 @@ pub struct PersonalAccessToken {
     pub purpose: TokenPurpose,
     /// Client IP address recorded at token creation. Only set for Refresh-scoped tokens.
     pub created_from_ip: Option<IpAddr>,
+    /// Row-level HMAC covering id, account_id, expires_at, purpose, revoked_at.
+    pub row_hmac: Option<String>,
 }
 
 impl PersonalAccessToken {
@@ -166,8 +172,8 @@ impl TokenStore for SqlTokenStore {
         sqlx::query(&one_line_sql(
             r#"
             INSERT INTO pats
-                (id, account_id, description, token_hash, token_suffix, created_at, expires_at, last_used_at, revoked_at, purpose, created_from_ip)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                (id, account_id, description, token_hash, token_suffix, created_at, expires_at, last_used_at, revoked_at, purpose, created_from_ip, row_hmac)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             "#,
         ))
         .bind(pat.id)
@@ -181,6 +187,7 @@ impl TokenStore for SqlTokenStore {
         .bind(pat.revoked_at)
         .bind(pat.purpose)
         .bind(pat.created_from_ip.map(|ip| ip.to_string()))
+        .bind(&pat.row_hmac)
         .execute(&self.pool)
         .await?;
 
@@ -193,7 +200,7 @@ impl TokenStore for SqlTokenStore {
             SELECT
                 id, short_id, account_id, description, token_hash, token_suffix, purpose,
                 created_at, expires_at, last_used_at, revoked_at, revoked_by, usage_count, metadata,
-                created_from_ip
+                created_from_ip, row_hmac
             FROM pats
             WHERE id = $1
             "#,
@@ -218,6 +225,7 @@ impl TokenStore for SqlTokenStore {
                 created_from_ip: rec
                     .get::<Option<String>, _>("created_from_ip")
                     .and_then(|s| s.parse::<IpAddr>().ok()),
+                row_hmac: rec.get("row_hmac"),
             };
             Ok(Some(pat))
         } else {
@@ -273,7 +281,7 @@ impl TokenStore for SqlTokenStore {
             SELECT
                 id, short_id, account_id, description, token_hash, token_suffix, purpose,
                 created_at, expires_at, last_used_at, revoked_at,
-                revoked_by, usage_count, metadata, created_from_ip
+                revoked_by, usage_count, metadata, created_from_ip, row_hmac
             FROM pats
             WHERE account_id = $1
             ORDER BY created_at DESC
@@ -303,10 +311,20 @@ impl TokenStore for SqlTokenStore {
                 created_from_ip: rec
                     .get::<Option<String>, _>("created_from_ip")
                     .and_then(|s| s.parse::<IpAddr>().ok()),
+                row_hmac: rec.get("row_hmac"),
             })
             .collect();
 
         Ok((tokens, total as usize))
+    }
+
+    async fn update_pat_hmac(&self, token_id: PatId, hmac_hex: &str) -> CkResult<()> {
+        sqlx::query("UPDATE pats SET row_hmac = $2 WHERE id = $1")
+            .bind(token_id)
+            .bind(hmac_hex)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 }
 
@@ -366,6 +384,14 @@ impl TokenStore for InMemoryTokenStore {
         })
     }
 
+    async fn update_pat_hmac(&self, token_id: PatId, hmac_hex: &str) -> CkResult<()> {
+        let mut tokens = self.tokens.lock();
+        if let Some(pat) = tokens.get_mut(&token_id) {
+            pat.row_hmac = Some(hmac_hex.to_string());
+        }
+        Ok(())
+    }
+
     async fn list_user_tokens(
         &self,
         account_id: AccountId,
@@ -388,11 +414,12 @@ impl TokenStore for InMemoryTokenStore {
 
 pub struct TokenManager {
     store: Arc<dyn TokenStore>,
+    signing_slot: Arc<SigningKeySlot>,
 }
 
 impl TokenManager {
-    pub fn new(store: Arc<dyn TokenStore>) -> Self {
-        Self { store }
+    pub fn new(store: Arc<dyn TokenStore>, signing_slot: Arc<SigningKeySlot>) -> Self {
+        Self { store, signing_slot }
     }
 
     fn validate_description(&self, description: &str) -> CkResult<()> {
@@ -461,6 +488,11 @@ impl TokenManager {
         let now = Utc::now();
         let expires_at = now + Duration::minutes(ttl_minutes);
 
+        let row_hmac = self
+            .signing_slot
+            .peek()
+            .map(|key| sign_pat(&key, token_id.0, account_id, expires_at, &purpose.to_string(), None).to_hex());
+
         let pat = PersonalAccessToken {
             id: token_id,
             short_id: ShortId::generate("tok_", 12),
@@ -474,6 +506,7 @@ impl TokenManager {
             revoked_at: None,
             purpose,
             created_from_ip: client_ip,
+            row_hmac,
         };
 
         self.store.save_token(&pat).await?;
@@ -537,6 +570,32 @@ impl TokenManager {
             .into());
         }
 
+        // Verify row HMAC if signing key is loaded — fail closed on NULL or mismatch
+        if let Some(key) = self.signing_slot.peek() {
+            let hmac_hex = pat.row_hmac.as_deref().ok_or(AuthError::Unauthenticated {
+                reason: AuthFailReason::InvalidToken,
+            })?;
+            let expected = RowHmac::from_hex(hmac_hex).map_err(|_| {
+                CkError::from(AuthError::Unauthenticated {
+                    reason: AuthFailReason::InvalidToken,
+                })
+            })?;
+            if !verify_pat(
+                &key,
+                pat.id.0,
+                pat.account_id,
+                pat.expires_at,
+                &pat.purpose.to_string(),
+                pat.revoked_at,
+                &expected,
+            ) {
+                return Err(AuthError::Unauthenticated {
+                    reason: AuthFailReason::InvalidToken,
+                }
+                .into());
+            }
+        }
+
         let now = Utc::now();
         self.store.update_last_used(pat.id, now).await?;
 
@@ -544,7 +603,27 @@ impl TokenManager {
     }
 
     pub async fn revoke_token(&self, _ctx: &CallContext, token_id: PatId) -> CkResult<bool> {
-        self.store.revoke_token(token_id).await
+        let revoked = self.store.revoke_token(token_id).await?;
+        if revoked {
+            // Re-sign the PAT now that revoked_at has changed
+            if let Some(key) = self.signing_slot.peek()
+                && let Ok(Some(pat)) = self.store.find_token(token_id).await
+            {
+                let hmac_hex = sign_pat(
+                    &key,
+                    pat.id.0,
+                    pat.account_id,
+                    pat.expires_at,
+                    &pat.purpose.to_string(),
+                    pat.revoked_at,
+                )
+                .to_hex();
+                if let Err(e) = self.store.update_pat_hmac(token_id, &hmac_hex).await {
+                    tracing::warn!(token_id = %token_id, err = %e, "failed to re-sign PAT after revocation");
+                }
+            }
+        }
+        Ok(revoked)
     }
 
     pub async fn list_user_tokens(
@@ -568,6 +647,7 @@ mod tests {
     use crate::global::short_id::ShortId;
     use crate::manager::account::Account;
     use crate::service::account::{AccountStatus, AccountType};
+    use crate::service::signing_key_slot::SigningKeySlot;
     use hierarkey_core::Metadata;
     use hierarkey_core::resources::AccountName;
 
@@ -603,13 +683,14 @@ mod tests {
             mfa_backup_codes: None,
             client_cert_fingerprint: None,
             client_cert_subject: None,
+            row_hmac: None,
         }
     }
 
     #[tokio::test]
     async fn test_create_token() {
         let store = Arc::new(InMemoryTokenStore::new());
-        let manager = TokenManager::new(store.clone());
+        let manager = TokenManager::new(store.clone(), Arc::new(SigningKeySlot::new()));
         let user = create_test_user();
 
         let (token, pat) = manager
@@ -625,7 +706,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_token_no_expiry() {
         let store = Arc::new(InMemoryTokenStore::new());
-        let manager = TokenManager::new(store);
+        let manager = TokenManager::new(store, Arc::new(SigningKeySlot::new()));
         let user = create_test_user();
 
         let (token, _pat) = manager
@@ -639,7 +720,7 @@ mod tests {
     #[tokio::test]
     async fn test_validate_description_too_short() {
         let store = Arc::new(InMemoryTokenStore::new());
-        let manager = TokenManager::new(store);
+        let manager = TokenManager::new(store, Arc::new(SigningKeySlot::new()));
         let user = create_test_user();
 
         let result = manager.create_token(user.id, "", 24, TokenPurpose::Auth, None).await;
@@ -657,7 +738,7 @@ mod tests {
     #[tokio::test]
     async fn test_validate_description_too_long() {
         let store = Arc::new(InMemoryTokenStore::new());
-        let manager = TokenManager::new(store);
+        let manager = TokenManager::new(store, Arc::new(SigningKeySlot::new()));
         let user = create_test_user();
 
         let long_desc = "a".repeat(201);
@@ -671,7 +752,7 @@ mod tests {
     #[tokio::test]
     async fn test_validate_ttl_too_short() {
         let store = Arc::new(InMemoryTokenStore::new());
-        let manager = TokenManager::new(store);
+        let manager = TokenManager::new(store, Arc::new(SigningKeySlot::new()));
         let user = create_test_user();
 
         let result = manager
@@ -684,7 +765,7 @@ mod tests {
     #[tokio::test]
     async fn test_validate_ttl_too_long() {
         let store = Arc::new(InMemoryTokenStore::new());
-        let manager = TokenManager::new(store);
+        let manager = TokenManager::new(store, Arc::new(SigningKeySlot::new()));
         let user = create_test_user();
 
         let result = manager
@@ -697,7 +778,7 @@ mod tests {
     #[tokio::test]
     async fn test_authenticate_token_success() {
         let store = Arc::new(InMemoryTokenStore::new());
-        let manager = TokenManager::new(store);
+        let manager = TokenManager::new(store, Arc::new(SigningKeySlot::new()));
         let user = create_test_user();
 
         let (token, _) = manager
@@ -713,7 +794,7 @@ mod tests {
     #[tokio::test]
     async fn test_authenticate_token_invalid_prefix() {
         let store = Arc::new(InMemoryTokenStore::new());
-        let manager = TokenManager::new(store);
+        let manager = TokenManager::new(store, Arc::new(SigningKeySlot::new()));
 
         let result = manager.authenticate_token("invalid_token").await;
         assert!(result.is_err());
@@ -729,7 +810,7 @@ mod tests {
     #[tokio::test]
     async fn test_authenticate_token_wrong_secret() {
         let store = Arc::new(InMemoryTokenStore::new());
-        let manager = TokenManager::new(store);
+        let manager = TokenManager::new(store, Arc::new(SigningKeySlot::new()));
         let user = create_test_user();
 
         let (token, _) = manager
@@ -748,7 +829,7 @@ mod tests {
     #[tokio::test]
     async fn test_authenticate_expired_token() {
         let store = Arc::new(InMemoryTokenStore::new());
-        let manager = TokenManager::new(store.clone());
+        let manager = TokenManager::new(store.clone(), Arc::new(SigningKeySlot::new()));
         let user = create_test_user();
 
         let (token, mut pat) = manager
@@ -768,7 +849,7 @@ mod tests {
     async fn test_revoke_token() {
         let ctx = CallContext::system();
         let store = Arc::new(InMemoryTokenStore::new());
-        let manager = TokenManager::new(store);
+        let manager = TokenManager::new(store, Arc::new(SigningKeySlot::new()));
         let user = create_test_user();
 
         let (token, pat) = manager
@@ -786,7 +867,7 @@ mod tests {
     async fn test_revoke_token_twice() {
         let ctx = CallContext::system();
         let store = Arc::new(InMemoryTokenStore::new());
-        let manager = TokenManager::new(store);
+        let manager = TokenManager::new(store, Arc::new(SigningKeySlot::new()));
         let user = create_test_user();
 
         let (_, pat) = manager
@@ -803,7 +884,7 @@ mod tests {
     #[tokio::test]
     async fn test_list_user_tokens() {
         let store = Arc::new(InMemoryTokenStore::new());
-        let manager = TokenManager::new(store);
+        let manager = TokenManager::new(store, Arc::new(SigningKeySlot::new()));
         let user = create_test_user();
 
         manager
@@ -825,7 +906,7 @@ mod tests {
     #[tokio::test]
     async fn test_list_user_tokens_sorted() {
         let store = Arc::new(InMemoryTokenStore::new());
-        let manager = TokenManager::new(store);
+        let manager = TokenManager::new(store, Arc::new(SigningKeySlot::new()));
         let user = create_test_user();
 
         manager
@@ -847,7 +928,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_token_info() {
         let store = Arc::new(InMemoryTokenStore::new());
-        let manager = TokenManager::new(store);
+        let manager = TokenManager::new(store, Arc::new(SigningKeySlot::new()));
         let user = create_test_user();
 
         let (_, pat) = manager
@@ -864,7 +945,7 @@ mod tests {
     #[tokio::test]
     async fn test_update_last_used() {
         let store = Arc::new(InMemoryTokenStore::new());
-        let manager = TokenManager::new(store.clone());
+        let manager = TokenManager::new(store.clone(), Arc::new(SigningKeySlot::new()));
         let user = create_test_user();
 
         let (token, pat) = manager
@@ -895,6 +976,7 @@ mod tests {
             revoked_at: None,
             purpose: TokenPurpose::ChangePwd,
             created_from_ip: None,
+            row_hmac: None,
         };
 
         assert!(!pat.is_expired());
@@ -921,6 +1003,7 @@ mod tests {
             revoked_at: None,
             purpose: TokenPurpose::ChangePwd,
             created_from_ip: None,
+            row_hmac: None,
         };
 
         assert!(!pat.is_revoked());
@@ -944,6 +1027,7 @@ mod tests {
             revoked_at: None,
             purpose: TokenPurpose::ChangePwd,
             created_from_ip: None,
+            row_hmac: None,
         };
 
         assert!(pat.is_valid());

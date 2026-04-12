@@ -3,19 +3,26 @@
 
 use crate::audit_context::CallContext;
 use crate::global::config::{Config, ServerMode};
+use crate::global::keys::SigningKey;
+use crate::global::row_hmac::{sign_account, sign_account_role_binding, sign_role_rule, sign_rule};
 use crate::http_server::federated_auth_provider::FederatedAuthProvider;
 use crate::http_server::mfa_provider::MfaProvider;
 use crate::http_server::mtls_provider::MtlsAuthProvider;
 use crate::http_server::nonce_cache::NonceCache;
 use crate::http_server::{AppState, ServerExtension, build_router, start_http_server, start_tls_server};
+use crate::manager::account::AccountId;
 use crate::manager::account::{AccountManager, SqlAccountStore};
 use crate::manager::federated_identity::FederatedIdentityManager;
 use crate::manager::kek::{KekManager, SqlKekStore};
+use crate::manager::masterkey::MasterKeyStatus;
 use crate::manager::masterkey::{MasterKeyUsage, SqlMasterKeyStore};
 use crate::manager::namespace::{NamespaceManager, SqlNamespaceStore};
 use crate::manager::rbac::SqlRbacStore;
+use crate::manager::rbac::rule::RuleRow;
 use crate::manager::secret::sql_store::SqlSecretStore;
+use crate::manager::signing_key::{SigningKeyManager, SqlSigningKeyStore};
 use crate::manager::token::SqlTokenStore;
+use crate::rbac::{RoleId, RuleId};
 use crate::service::masterkey::MasterKeyProviderType;
 use crate::service::masterkey::provider::insecure::InsecureMasterKeyProvider;
 use crate::service::masterkey::provider::passphrase::PassphraseMasterKeyProvider;
@@ -235,7 +242,8 @@ impl StartupChecks {
             .await
             .map_err(StartupError::Other)?;
         let store = Arc::new(SqlAccountStore::new(pool.clone()).map_err(StartupError::Other)?);
-        let account_manager = AccountManager::new(store);
+        let signing_slot = Arc::new(crate::service::signing_key_slot::SigningKeySlot::new());
+        let account_manager = AccountManager::new(store, signing_slot);
 
         let system_name = AccountName::try_from("$system").map_err(StartupError::Other)?;
         let system_account = account_manager
@@ -259,7 +267,8 @@ impl StartupChecks {
             .await
             .map_err(StartupError::Other)?;
         let store = Arc::new(SqlAccountStore::new(pool.clone()).map_err(StartupError::Other)?);
-        let account_manager = AccountManager::new(store);
+        let signing_slot = Arc::new(crate::service::signing_key_slot::SigningKeySlot::new());
+        let account_manager = AccountManager::new(store, signing_slot);
 
         let admin_count = account_manager.get_admin_count().await.map_err(StartupError::Other)?;
         if admin_count == 0 {
@@ -314,7 +323,8 @@ pub async fn build_app_state(cfg: Config, extensions: &[Box<dyn ServerExtension>
     let mk_manager = Arc::new(MasterKeyManager::new(store)?);
 
     let store = Arc::new(SqlAccountStore::new(pool.clone())?);
-    let account_manager = Arc::new(AccountManager::new(store));
+    let signing_slot = Arc::new(crate::service::signing_key_slot::SigningKeySlot::new());
+    let account_manager = Arc::new(AccountManager::new(store, signing_slot.clone()));
 
     let store = Arc::new(SqlNamespaceStore::new(pool.clone()));
     let ns_manager = Arc::new(NamespaceManager::new(store));
@@ -323,7 +333,7 @@ pub async fn build_app_state(cfg: Config, extensions: &[Box<dyn ServerExtension>
     let secret_manager = Arc::new(SecretManager::new(store));
 
     let store = Arc::new(SqlTokenStore::new(pool.clone()));
-    let token_manager = Arc::new(TokenManager::new(store));
+    let token_manager = Arc::new(TokenManager::new(store, signing_slot.clone()));
 
     let token_service = Arc::new(TokenService::new(token_manager.clone()));
 
@@ -362,8 +372,11 @@ pub async fn build_app_state(cfg: Config, extensions: &[Box<dyn ServerExtension>
     let store = Arc::new(SqlKekStore::new(pool.clone()));
     let kek_manager = Arc::new(KekManager::new(store));
 
+    let signing_key_store = Arc::new(SqlSigningKeyStore::new(pool.clone()));
+    let signing_key_manager = Arc::new(SigningKeyManager::new(signing_key_store));
+
     let rbac_store = Arc::new(SqlRbacStore::new(pool.clone()));
-    let rbac_manager = Arc::new(RbacManager::new(rbac_store));
+    let rbac_manager = Arc::new(RbacManager::new(rbac_store, signing_slot.clone()));
 
     let kek_service = Arc::new(KekService::new(
         kek_manager,
@@ -429,6 +442,8 @@ pub async fn build_app_state(cfg: Config, extensions: &[Box<dyn ServerExtension>
         task_manager,
         config: cfg,
         sa_nonce_cache,
+        signing_slot,
+        signing_key_manager,
     })
 }
 
@@ -502,8 +517,138 @@ fn setup_stdout_logging(filter: reload::Layer<EnvFilter, tracing_subscriber::Reg
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set global subscriber");
 }
 
+/// Decrypt and load the active signing key into the in-process slot.
+///
+/// Called after master keys are loaded.  If no signing key has been provisioned,
+/// or the active master key is still locked, HMAC checks are silently skipped
+/// (the server runs in degraded mode rather than refusing to start).
+pub async fn load_signing_key(state: &AppState) -> CkResult<()> {
+    let Some(enc_sk) = state.signing_key_manager.fetch_active().await? else {
+        return Ok(());
+    };
+
+    let ctx = CallContext::system();
+    let master_keys = state.masterkey_service.find_all(&ctx).await?;
+    let Some(active_mk) = master_keys.iter().find(|k| k.status == MasterKeyStatus::Active) else {
+        return Ok(());
+    };
+
+    if state.masterkey_service.is_locked(&ctx, active_mk)? {
+        return Ok(());
+    }
+
+    let crypto = state.masterkey_service.get_crypto_handle(active_mk)?;
+    let key_bytes = crypto.unwrap_signing_key(&enc_sk)?;
+    let signing_key = SigningKey::from_bytes(&key_bytes)?;
+    state.signing_slot.load(signing_key.clone());
+
+    // Sign any rows created before the signing key was provisioned (migrations, bootstrap).
+    // This is idempotent: rows already signed are unchanged.
+    if let Err(e) = backfill_row_hmacs(&state.pool, &signing_key).await {
+        warn!(err = %e, "backfill of NULL row HMACs failed (non-fatal)");
+    }
+
+    Ok(())
+}
+
+/// Sign all rows with NULL `row_hmac` in tables that can have pre-signing-key content
+/// (accounts created by migrations, role-rule associations from initial population, etc.).
+///
+/// Called once after the signing key is loaded.  Idempotent — rows already signed are skipped.
+async fn backfill_row_hmacs(pool: &sqlx::PgPool, key: &SigningKey) -> CkResult<()> {
+    use sqlx::Row;
+
+    // ── rbac_rules ────────────────────────────────────────────────────────────
+    let rule_rows =
+        sqlx::query_as::<_, RuleRow>("SELECT * FROM rbac_rules WHERE row_hmac IS NULL AND deleted_at IS NULL")
+            .fetch_all(pool)
+            .await?;
+
+    for rule_row in &rule_rows {
+        let hmac_hex = sign_rule(key, rule_row).to_hex();
+        sqlx::query("UPDATE rbac_rules SET row_hmac = $2 WHERE id = $1")
+            .bind(rule_row.id.0)
+            .bind(&hmac_hex)
+            .execute(pool)
+            .await?;
+    }
+
+    if !rule_rows.is_empty() {
+        tracing::info!(count = rule_rows.len(), "backfilled row_hmac for rbac_rules");
+    }
+
+    // ── rbac_role_rules ───────────────────────────────────────────────────────
+    let rows =
+        sqlx::query("SELECT role_id, rule_id FROM rbac_role_rules WHERE row_hmac IS NULL AND removed_at IS NULL")
+            .fetch_all(pool)
+            .await?;
+
+    for row in &rows {
+        let role_id = RoleId(row.get::<uuid::Uuid, _>("role_id"));
+        let rule_id = RuleId(row.get::<uuid::Uuid, _>("rule_id"));
+        let hmac_hex = sign_role_rule(key, role_id, rule_id).to_hex();
+        sqlx::query("UPDATE rbac_role_rules SET row_hmac = $3 WHERE role_id = $1 AND rule_id = $2")
+            .bind(role_id.0)
+            .bind(rule_id.0)
+            .bind(&hmac_hex)
+            .execute(pool)
+            .await?;
+    }
+
+    if !rows.is_empty() {
+        tracing::info!(count = rows.len(), "backfilled row_hmac for rbac_role_rules");
+    }
+
+    // ── rbac_account_roles ────────────────────────────────────────────────────
+    let rows = sqlx::query(
+        "SELECT account_id, role_id, valid_from, valid_until FROM rbac_account_roles WHERE row_hmac IS NULL",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    for row in &rows {
+        let account_id = AccountId(row.get::<uuid::Uuid, _>("account_id"));
+        let role_id = RoleId(row.get::<uuid::Uuid, _>("role_id"));
+        let valid_from: Option<chrono::DateTime<chrono::Utc>> = row.get("valid_from");
+        let valid_until: Option<chrono::DateTime<chrono::Utc>> = row.get("valid_until");
+        let hmac_hex = sign_account_role_binding(key, account_id, role_id, valid_from, valid_until).to_hex();
+        sqlx::query("UPDATE rbac_account_roles SET row_hmac = $3 WHERE account_id = $1 AND role_id = $2")
+            .bind(account_id.0)
+            .bind(role_id.0)
+            .bind(&hmac_hex)
+            .execute(pool)
+            .await?;
+    }
+
+    if !rows.is_empty() {
+        tracing::info!(count = rows.len(), "backfilled row_hmac for rbac_account_roles");
+    }
+
+    // ── accounts (system accounts created by migrations) ───────────────────
+    // We fetch full account rows so sign_account can cover all fields.
+    let accounts =
+        sqlx::query_as::<_, crate::manager::account::Account>("SELECT * FROM accounts WHERE row_hmac IS NULL")
+            .fetch_all(pool)
+            .await?;
+
+    for account in &accounts {
+        let hmac_hex = sign_account(key, account).to_hex();
+        sqlx::query("UPDATE accounts SET row_hmac = $2 WHERE id = $1")
+            .bind(account.id.0)
+            .bind(&hmac_hex)
+            .execute(pool)
+            .await?;
+    }
+
+    if !accounts.is_empty() {
+        tracing::info!(count = accounts.len(), "backfilled row_hmac for accounts");
+    }
+
+    Ok(())
+}
+
 /// Load all master keys from the database into the in-memory keyring.
-async fn load_master_keys(state: &AppState) -> CkResult<()> {
+pub async fn load_master_keys(state: &AppState) -> CkResult<()> {
     let ctx = CallContext::system();
     let masterkeys = state.masterkey_service.find_all(&ctx).await?;
     for master_key in masterkeys {
@@ -535,6 +680,22 @@ pub async fn start_server(cfg: Config, extensions: &[Box<dyn ServerExtension>]) 
         eprintln!("  [ FAIL ]  {:<18}  {e}", "Master key");
         e
     })?;
+
+    match load_signing_key(&state).await {
+        Ok(()) if state.signing_slot.peek().is_some() => {
+            println!("  [  OK  ]  {:<18}  active (row HMAC checks enabled)", "Signing key");
+        }
+        Ok(()) => {
+            println!(
+                "  [ WARN ]  {:<18}  not provisioned - run 'hierarkey bootstrap-signing-key'",
+                "Signing key"
+            );
+        }
+        Err(e) => {
+            eprintln!("  [ FAIL ]  {:<18}  {e}", "Signing key");
+            return Err(e);
+        }
+    }
 
     if cfg.masterkey.allow_insecure_masterkey {
         warn!(

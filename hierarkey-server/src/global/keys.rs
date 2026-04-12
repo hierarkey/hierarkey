@@ -14,10 +14,12 @@ use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 pub const KEK_AAD: &str = "hierarkey:kek-wrap:v1";
+pub const SIGNING_KEY_AAD: &str = "hierarkey:signing-key-wrap:v1";
 
 pub const DEK_SIZE: usize = 32;
 pub const TAG_SIZE: usize = 16;
 pub const KEK_SIZE: usize = 32;
+pub const SIGNING_KEY_SIZE: usize = 32;
 pub const NONCE_SIZE: usize = 12;
 
 // ======= Data Encryption Key (DEK) =======
@@ -299,6 +301,110 @@ impl Clone for Kek {
         let mut key_bytes = Zeroizing::new([0u8; KEK_SIZE]);
         key_bytes.copy_from_slice(&self.inner[..]);
         Kek { inner: key_bytes }
+    }
+}
+
+// ======= Row Integrity Signing Key =======
+
+uuid_id!(SigningKeyId, "sk_");
+
+#[derive(sqlx::FromRow, Debug, Clone, Serialize, Deserialize)]
+/// Encrypted signing key as stored in the database. Safe to copy/clone around.
+pub struct EncryptedSigningKey {
+    /// Unique ID of the signing key
+    pub id: SigningKeyId,
+    /// Short human-friendly ID
+    pub short_id: ShortId,
+    /// Wrapping algorithm (always AES-GCM-256 for now)
+    #[sqlx(try_from = "String", rename = "algorithm")]
+    pub algo: KekEncAlgo,
+    /// Encrypted 32-byte key material: nonce (12) || ciphertext (32) || tag (16)
+    #[sqlx(try_from = "Vec<u8>")]
+    pub ciphertext: EncryptedData,
+    /// Master key that wrapped this signing key
+    pub masterkey_id: MasterkeyId,
+    /// Creation timestamp
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl EncryptedSigningKey {
+    /// Build the Additional Authenticated Data string used during wrap/unwrap.
+    /// Includes the signing key's own ID to bind the ciphertext to this specific row.
+    pub fn generate_aad(algo: KekEncAlgo, masterkey_id: MasterkeyId, signing_key_id: SigningKeyId) -> String {
+        format!("{}|{}|{}|{}", SIGNING_KEY_AAD, algo.as_str(), masterkey_id, signing_key_id)
+    }
+
+    pub fn validate(&self) -> CkResult<()> {
+        if self.ciphertext.nonce()?.iter().all(|&b| b == 0) {
+            return Err(CryptoError::InvalidEncryptedData {
+                field: "nonce",
+                message: "Nonce cannot be all zeros".to_string(),
+            }
+            .into());
+        }
+        if self.ciphertext.ciphertext()?.iter().all(|&b| b == 0) {
+            return Err(CryptoError::InvalidEncryptedData {
+                field: "ciphertext",
+                message: "Ciphertext cannot be all zeros".to_string(),
+            }
+            .into());
+        }
+        Ok(())
+    }
+}
+
+/// Plaintext signing key held in memory after the master key is unlocked.
+/// Sensitive — zeroed on drop.
+#[derive(Debug, Zeroize, ZeroizeOnDrop)]
+pub struct SigningKey {
+    pub inner: Zeroizing<[u8; SIGNING_KEY_SIZE]>,
+}
+
+impl SigningKey {
+    pub fn generate() -> CkResult<Self> {
+        let mut key_bytes = Zeroizing::new([0u8; SIGNING_KEY_SIZE]);
+        rand::rng()
+            .try_fill_bytes(&mut key_bytes[..])
+            .map_err(|e| CryptoError::RandomnessFailure(anyhow::anyhow!(e)))?;
+
+        if key_bytes.iter().all(|&b| b == 0) {
+            // Astronomically unlikely, but try once more to be safe
+            rand::rng()
+                .try_fill_bytes(&mut key_bytes[..])
+                .map_err(|e| CryptoError::RandomnessFailure(anyhow::anyhow!(e)))?;
+        }
+
+        Ok(SigningKey { inner: key_bytes })
+    }
+
+    pub fn as_bytes(&self) -> &[u8; SIGNING_KEY_SIZE] {
+        &self.inner
+    }
+
+    pub fn from_bytes(bytes: &[u8; SIGNING_KEY_SIZE]) -> CkResult<Self> {
+        if bytes.iter().all(|&b| b == 0) {
+            return Err(CryptoError::InvalidEncryptedData {
+                field: "signing_key",
+                message: "Key cannot be all zeros".to_string(),
+            }
+            .into());
+        }
+
+        let mut key_bytes = Zeroizing::new([0u8; SIGNING_KEY_SIZE]);
+        key_bytes.copy_from_slice(bytes);
+        Ok(SigningKey { inner: key_bytes })
+    }
+
+    pub fn is_zero(&self) -> bool {
+        self.inner.iter().all(|&b| b == 0)
+    }
+}
+
+impl Clone for SigningKey {
+    fn clone(&self) -> Self {
+        let mut key_bytes = Zeroizing::new([0u8; SIGNING_KEY_SIZE]);
+        key_bytes.copy_from_slice(&self.inner[..]);
+        SigningKey { inner: key_bytes }
     }
 }
 

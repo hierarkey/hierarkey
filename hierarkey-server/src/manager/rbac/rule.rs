@@ -24,6 +24,8 @@ pub struct Rule {
     pub created_by: AccountId,
     pub updated_at: Option<DateTime<Utc>>,
     pub updated_by: Option<AccountId>,
+    /// Row HMAC carried from the DB row - not exposed via API, used for integrity checks.
+    pub row_hmac: Option<String>,
 }
 
 // --------------------------------------------------------------------------------------------
@@ -51,6 +53,11 @@ pub struct RuleRow {
     pub created_by: AccountId,
     pub updated_at: Option<DateTime<Utc>>,
     pub updated_by: Option<AccountId>,
+
+    /// BLAKE3-keyed HMAC over the security-critical fields of this row.
+    /// `None` when the column was not selected or the row predates HMAC enforcement.
+    #[sqlx(default)]
+    pub row_hmac: Option<String>,
 }
 
 impl TryFrom<RuleRow> for Rule {
@@ -88,6 +95,7 @@ impl TryFrom<RuleRow> for Rule {
             created_by: r.created_by,
             updated_at: r.updated_at,
             updated_by: r.updated_by,
+            row_hmac: r.row_hmac,
         })
     }
 }
