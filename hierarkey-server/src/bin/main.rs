@@ -22,7 +22,7 @@ use hierarkey_server::{
         masterkey::{BackendCreate, CreateMasterKeyRequest, MasterKeyProviderType},
         masterkey::provider::UnlockArgs,
     },
-    startup::{StartupChecks, build_app_state, install_crypto_provider, setup_logging, start_server},
+    startup::{StartupChecks, build_app_state, install_crypto_provider, load_master_keys, load_signing_key, setup_logging, start_server},
 };
 use std::{io::Write, process::exit};
 use tracing::{error, info};
@@ -288,6 +288,9 @@ async fn bootstrap_admin_account(
 ) -> CkResult<()> {
     let cfg = Config::load_from_file(config_path)?;
     let state = build_app_state(cfg, &[]).await?;
+    // system_ctx must be called before the signing key is loaded: the $system account
+    // is created by migrations and has no row_hmac; loading the key first would cause
+    // the HMAC check to fail on lookup.
     let ctx = system_ctx(&state).await?;
 
     if state.account_service.get_admin_count(&ctx).await? != 0 {
@@ -295,6 +298,11 @@ async fn bootstrap_admin_account(
             what: "an admin account already exists".into(),
         });
     }
+
+    // Load master keys and signing key AFTER the system account lookup so the new
+    // admin account gets a signed row_hmac on creation.
+    let _ = load_master_keys(&state).await;
+    let _ = load_signing_key(&state).await;
 
     let password = match password {
         Some(pw) => {

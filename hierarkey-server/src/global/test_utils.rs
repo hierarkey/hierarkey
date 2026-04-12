@@ -45,15 +45,16 @@ pub fn create_mock_app_state() -> AppState {
     let store = Arc::new(InMemorySecretStore::new());
     let secret_manager = Arc::new(SecretManager::new(store));
 
+    let signing_slot = Arc::new(SigningKeySlot::new());
+
     let store = Arc::new(InMemoryTokenStore::new());
-    let token_manager = Arc::new(TokenManager::new(store));
+    let token_manager = Arc::new(TokenManager::new(store, signing_slot.clone()));
     let token_service = Arc::new(TokenService::new(token_manager.clone()));
 
     let system_account_id = AccountId::new();
     let account_store = Arc::new(InMemoryAccountStore::new());
     account_store.seed_admin(system_account_id);
     let store = account_store;
-    let signing_slot = Arc::new(SigningKeySlot::new());
     let account_manager = Arc::new(AccountManager::new(store, signing_slot));
 
     let store = Arc::new(InMemoryRbacStore::new());

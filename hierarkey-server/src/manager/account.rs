@@ -4,7 +4,7 @@
 use crate::audit_context::CallContext;
 #[cfg(test)]
 use crate::global::DEFAULT_OFFSET_VALUE;
-use crate::global::row_hmac::{sign_account, verify_account, RowHmac};
+use crate::global::row_hmac::{sign_account, sign_account_role_binding, verify_account, RowHmac};
 use crate::global::short_id::ShortId;
 use crate::global::uuid_id::Identifier;
 use crate::global::{DEFAULT_LIMIT_VALUE, MAX_LIMIT_VALUE};
@@ -293,10 +293,14 @@ pub trait AccountStore: Send + Sync {
     async fn get_admin_count(&self) -> CkResult<usize>;
     async fn count_user_service_accounts(&self) -> CkResult<i64>;
     async fn is_admin(&self, account_id: AccountId) -> CkResult<bool>;
-    async fn grant_admin(&self, ctx: &CallContext, target_account_id: AccountId) -> CkResult<()>;
+    /// Returns the UUID of the `platform:admin` role, or None if it doesn't exist.
+    async fn get_admin_role_id(&self) -> CkResult<Option<uuid::Uuid>>;
+    async fn grant_admin(&self, ctx: &CallContext, target_account_id: AccountId, row_hmac: Option<String>) -> CkResult<()>;
     async fn revoke_admin(&self, ctx: &CallContext, target_account_id: AccountId) -> CkResult<()>;
 
     async fn delete_account(&self, ctx: &CallContext, account_id: AccountId) -> CkResult<()>;
+    /// Update only the `row_hmac` column for an account (used after soft-delete re-signing).
+    async fn set_account_hmac(&self, account_id: AccountId, hmac_hex: &str) -> CkResult<()>;
 
     async fn search(&self, query: &AccountSearchQuery) -> CkResult<(Vec<AccountDto>, usize)>;
 
@@ -678,11 +682,21 @@ impl AccountStore for SqlAccountStore {
     /// Grants `platform:admin` to `target_account_id` (idempotent).
     ///
     /// `actor` is recorded in `created_by` (can be None for system/bootstrap actions).
-    async fn grant_admin(&self, ctx: &CallContext, target_account_id: AccountId) -> CkResult<()> {
+    async fn get_admin_role_id(&self) -> CkResult<Option<uuid::Uuid>> {
+        let id: Option<uuid::Uuid> = sqlx::query_scalar(
+            "SELECT id FROM rbac_roles WHERE name = $1",
+        )
+        .bind(ADMIN_ROLE_NAME)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(id)
+    }
+
+    async fn grant_admin(&self, ctx: &CallContext, target_account_id: AccountId, row_hmac: Option<String>) -> CkResult<()> {
         sqlx::query(
             r#"
-            INSERT INTO rbac_account_roles (account_id, role_id, created_by)
-            SELECT $2, r.id, $3
+            INSERT INTO rbac_account_roles (account_id, role_id, created_by, row_hmac)
+            SELECT $2, r.id, $3, $4
             FROM rbac_roles r
             WHERE r.name = $1
             ON CONFLICT (account_id, role_id) DO NOTHING
@@ -691,6 +705,7 @@ impl AccountStore for SqlAccountStore {
         .bind(ADMIN_ROLE_NAME)
         .bind(target_account_id)
         .bind(ctx.actor.account_id().copied())
+        .bind(row_hmac)
         .execute(&self.pool)
         .await?;
 
@@ -797,6 +812,15 @@ impl AccountStore for SqlAccountStore {
         .bind(actor_id)
         .execute(&self.pool)
         .await?;
+        Ok(())
+    }
+
+    async fn set_account_hmac(&self, account_id: AccountId, hmac_hex: &str) -> CkResult<()> {
+        sqlx::query("UPDATE accounts SET row_hmac = $2 WHERE id = $1")
+            .bind(account_id)
+            .bind(hmac_hex)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -1141,7 +1165,12 @@ impl AccountStore for InMemoryAccountStore {
             .unwrap_or(false))
     }
 
-    async fn grant_admin(&self, _ctx: &CallContext, target_account_id: AccountId) -> CkResult<()> {
+    async fn get_admin_role_id(&self) -> CkResult<Option<uuid::Uuid>> {
+        // InMemory store doesn't track real UUIDs for roles
+        Ok(None)
+    }
+
+    async fn grant_admin(&self, _ctx: &CallContext, target_account_id: AccountId, _row_hmac: Option<String>) -> CkResult<()> {
         // If account doesn't exist (or is deleted), decide your policy:
         // Here: error if missing, ignore if deleted.
         let accounts = self.accounts.lock();
@@ -1214,6 +1243,14 @@ impl AccountStore for InMemoryAccountStore {
             account.deleted_at = Some(Utc::now());
             account.deleted_by = actor_id;
             account.status = AccountStatus::Disabled;
+        }
+        Ok(())
+    }
+
+    async fn set_account_hmac(&self, account_id: AccountId, hmac_hex: &str) -> CkResult<()> {
+        let mut accounts = self.accounts.lock();
+        if let Some(account) = accounts.get_mut(&account_id) {
+            account.row_hmac = Some(hmac_hex.to_string());
         }
         Ok(())
     }
@@ -1477,7 +1514,19 @@ impl AccountManager {
     }
 
     pub async fn grant_admin(&self, ctx: &CallContext, account_id: AccountId) -> CkResult<()> {
-        self.store.grant_admin(ctx, account_id).await
+        // Compute HMAC for the role binding if the signing key is loaded.
+        // valid_from / valid_until are NULL for admin grants.
+        let row_hmac = if let Some(key) = self.signing_slot.peek() {
+            if let Ok(Some(role_id_raw)) = self.store.get_admin_role_id().await {
+                let role_id = crate::rbac::RoleId(role_id_raw);
+                Some(sign_account_role_binding(&key, account_id, role_id, None, None).to_hex())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        self.store.grant_admin(ctx, account_id, row_hmac).await
     }
 
     pub async fn set_last_login(&self, ctx: &CallContext, account_id: AccountId) -> CkResult<()> {
@@ -1906,7 +1955,25 @@ impl AccountManager {
 
     pub async fn delete_account(&self, ctx: &CallContext, account_id: AccountId) -> CkResult<()> {
         self.cache_evict(account_id);
-        self.store.delete_account(ctx, account_id).await
+
+        // Fetch the live account before deletion so we can compute a post-delete HMAC.
+        let pre_delete = self.store.find_by_id(account_id).await?;
+
+        self.store.delete_account(ctx, account_id).await?;
+
+        // Re-sign with the post-delete state so that clearing deleted_at (resurrection)
+        // invalidates the HMAC and is caught on the next authentication attempt.
+        if let (Some(key), Some(mut account)) = (self.signing_slot.peek(), pre_delete) {
+            account.deleted_at = Some(chrono::Utc::now());
+            account.status = AccountStatus::Disabled;
+            let hmac_hex = sign_account(&key, &account).to_hex();
+            // Best-effort: deletion already succeeded; HMAC update failure is logged but not fatal.
+            if let Err(e) = self.store.set_account_hmac(account_id, &hmac_hex).await {
+                tracing::warn!(account_id = %account_id, err = %e, "failed to re-sign account after deletion");
+            }
+        }
+
+        Ok(())
     }
 
     /// Recover a `Tampered` account (CLI break-glass path).

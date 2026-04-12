@@ -10,12 +10,14 @@
 //!
 //! ## Protected row types
 //!
-//! | Row type                  | Covered fields                                                         |
-//! |---------------------------|------------------------------------------------------------------------|
-//! | `accounts`                | id, name, account_type, status, password_hash, mfa_enabled, mfa_secret, public_key, passphrase_hash |
-//! | `rbac_rules`              | id, effect, permission, target_kind, pattern_raw, condition            |
-//! | `rbac_account_rules`      | account_id, rule_id, valid_from, valid_until                           |
-//! | `rbac_account_roles`      | account_id, role_id, valid_from, valid_until                           |
+//! | Row type                  | Covered fields                                                                    |
+//! |---------------------------|-----------------------------------------------------------------------------------|
+//! | `accounts`                | id, name, account_type, status, password_hash, mfa_enabled, mfa_secret, public_key, passphrase_hash, deleted_at |
+//! | `rbac_rules`              | id, effect, permission, target_kind, pattern_raw, condition                       |
+//! | `rbac_account_rules`      | account_id, rule_id, valid_from, valid_until                                      |
+//! | `rbac_account_roles`      | account_id, role_id, valid_from, valid_until                                      |
+//! | `rbac_role_rules`         | role_id, rule_id                                                                  |
+//! | `pats`                    | id, account_id, expires_at, purpose, revoked_at                                   |
 //!
 //! ## Canonical encoding
 //!
@@ -37,6 +39,7 @@ use crate::rbac::{RoleId, RuleId, TargetKind};
 use chrono::{DateTime, Utc};
 use hierarkey_core::error::crypto::CryptoError;
 use hierarkey_core::CkResult;
+use uuid::Uuid;
 
 // -- Context strings (domain separators) --
 // Each row type uses a distinct string hashed at the start of every MAC computation.
@@ -44,10 +47,13 @@ use hierarkey_core::CkResult;
 // produce different MACs, even when the signing key is the same.
 // Bump the ":vN" suffix whenever the canonical field set for that row type changes.
 
-pub const ACCOUNT_HMAC_CTX: &str = "hierarkey:account:v1";
+// v2: added deleted_at to account HMAC coverage (closes gap 1.6)
+pub const ACCOUNT_HMAC_CTX: &str = "hierarkey:account:v2";
 pub const RULE_HMAC_CTX: &str = "hierarkey:rbac-rule:v1";
 pub const ACCOUNT_RULE_BINDING_HMAC_CTX: &str = "hierarkey:rbac-account-rule:v1";
 pub const ACCOUNT_ROLE_BINDING_HMAC_CTX: &str = "hierarkey:rbac-account-role:v1";
+pub const ROLE_RULE_HMAC_CTX: &str = "hierarkey:rbac-role-rule:v1";
+pub const PAT_HMAC_CTX: &str = "hierarkey:pat:v1";
 
 // -- Output type --
 
@@ -140,6 +146,12 @@ impl RowHasher {
         self
     }
 
+    /// Push a required timestamp as `[8-byte i64 LE Unix seconds]`.
+    fn datetime_req(&mut self, dt: DateTime<Utc>) -> &mut Self {
+        self.hasher.update(&dt.timestamp().to_le_bytes());
+        self
+    }
+
     /// Push an optional timestamp.
     ///
     /// Encoding: `0x00` if absent; `0x01 [8-byte i64 LE Unix seconds]` if present.
@@ -177,12 +189,15 @@ fn target_kind_str(k: TargetKind) -> &'static str {
 
 // -- Account --
 
-/// Compute the HMAC for an `accounts` row.
+/// Compute the HMAC for an `accounts` row (v2).
 ///
 /// Covers the fields whose tampering could elevate privileges or bypass
 /// authentication: identity (`id`, `name`, `account_type`), access-control state
-/// (`status`), and all credential material
+/// (`status`, `deleted_at`), and all credential material
 /// (`password_hash`, `passphrase_hash`, `public_key`, `mfa_enabled`, `mfa_secret`).
+///
+/// Including `deleted_at` means that clearing it (resurrecting a soft-deleted account)
+/// invalidates the HMAC and is detected on the next authentication attempt.
 ///
 /// Intentionally excludes non-security fields: `full_name`, `email`, `metadata`,
 /// `last_login_at`, `failed_login_attempts`, `locked_until`, `updated_at`, etc.
@@ -197,6 +212,7 @@ pub fn sign_account(key: &SigningKey, account: &Account) -> RowHmac {
         .str_opt(account.mfa_secret.as_deref())
         .str_opt(account.public_key.as_deref())
         .str_opt(account.passphrase_hash.as_deref())
+        .datetime_opt(account.deleted_at)
         .finalize()
 }
 
@@ -295,6 +311,59 @@ pub fn verify_account_role_binding(
     expected: &RowHmac,
 ) -> bool {
     sign_account_role_binding(key, account_id, role_id, valid_from, valid_until) == *expected
+}
+
+// -- RBAC role -> rule association --
+
+/// Compute the HMAC for an `rbac_role_rules` row.
+///
+/// The PK is (`role_id`, `rule_id`); both are included so that neither can be
+/// substituted without invalidating the MAC.
+pub fn sign_role_rule(key: &SigningKey, role_id: RoleId, rule_id: RuleId) -> RowHmac {
+    let mut h = RowHasher::new(key.as_bytes(), ROLE_RULE_HMAC_CTX);
+    h.uuid(role_id.0).uuid(rule_id.0).finalize()
+}
+
+/// Verify the HMAC for an `rbac_role_rules` row.
+pub fn verify_role_rule(key: &SigningKey, role_id: RoleId, rule_id: RuleId, expected: &RowHmac) -> bool {
+    sign_role_rule(key, role_id, rule_id) == *expected
+}
+
+// -- Personal Access Token --
+
+/// Compute the HMAC for a `pats` row.
+///
+/// Covers the fields that control whether and until when the token is valid:
+/// `id`, `account_id`, `expires_at`, `purpose`, and `revoked_at`.
+/// Extending `expires_at` or clearing `revoked_at` in the DB invalidates the MAC.
+pub fn sign_pat(
+    key: &SigningKey,
+    id: Uuid,
+    account_id: AccountId,
+    expires_at: DateTime<Utc>,
+    purpose: &str,
+    revoked_at: Option<DateTime<Utc>>,
+) -> RowHmac {
+    let mut h = RowHasher::new(key.as_bytes(), PAT_HMAC_CTX);
+    h.uuid(id)
+        .uuid(account_id.0)
+        .datetime_req(expires_at)
+        .str_req(purpose)
+        .datetime_opt(revoked_at)
+        .finalize()
+}
+
+/// Verify the HMAC for a `pats` row.
+pub fn verify_pat(
+    key: &SigningKey,
+    id: Uuid,
+    account_id: AccountId,
+    expires_at: DateTime<Utc>,
+    purpose: &str,
+    revoked_at: Option<DateTime<Utc>>,
+    expected: &RowHmac,
+) -> bool {
+    sign_pat(key, id, account_id, expires_at, purpose, revoked_at) == *expected
 }
 
 // ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 // Copyright (C) 2025-2026 Joshua Thijssen <jthijssen@hierarkey.com>
 
 use crate::audit_context::CallContext;
-use crate::global::row_hmac::{sign_account_role_binding, sign_account_rule_binding, sign_rule, verify_account_role_binding, verify_account_rule_binding, RowHmac};
+use crate::global::row_hmac::{sign_account_role_binding, sign_account_rule_binding, sign_role_rule, sign_rule, verify_account_role_binding, verify_account_rule_binding, verify_role_rule, RowHmac};
 use crate::manager::account::AccountId;
 use crate::manager::rbac::role::{AccountBindings, Role, RoleRow, RoleWithRules};
 use crate::manager::rbac::rule::{Rule, RuleRow};
@@ -61,7 +61,7 @@ impl TryFrom<RuleListRow> for Rule {
 // ----------------------------------------------------------------------------------------------
 
 /// Raw row from `rbac_account_rules` - used for HMAC verification on read.
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct RuleBindingRow {
     pub account_id: AccountId,
     pub rule_id: RuleId,
@@ -71,12 +71,20 @@ pub struct RuleBindingRow {
 }
 
 /// Raw row from `rbac_account_roles` - used for HMAC verification on read.
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct RoleBindingRow {
     pub account_id: AccountId,
     pub role_id: RoleId,
     pub valid_from: Option<chrono::DateTime<chrono::Utc>>,
     pub valid_until: Option<chrono::DateTime<chrono::Utc>>,
+    pub row_hmac: Option<String>,
+}
+
+/// Raw row from `rbac_role_rules` - used for HMAC verification on read.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct RoleRuleRow {
+    pub role_id: RoleId,
+    pub rule_id: RuleId,
     pub row_hmac: Option<String>,
 }
 
@@ -99,7 +107,7 @@ pub trait RbacStore: Send + Sync + 'static {
     async fn role_get_by_name(&self, name: &str) -> CkResult<RoleWithRules>;
     async fn role_get(&self, id: RoleId) -> CkResult<RoleWithRules>;
     async fn role_search(&self) -> CkResult<Vec<RoleWithRules>>;
-    async fn add_rule_to_role(&self, actor: AccountId, role_id: RoleId, rule_id: RuleId) -> CkResult<()>;
+    async fn add_rule_to_role(&self, actor: AccountId, role_id: RoleId, rule_id: RuleId, row_hmac: Option<String>) -> CkResult<()>;
     async fn delete_rule_from_role(&self, actor: AccountId, role_id: RoleId, rule_id: RuleId) -> CkResult<()>;
 
     async fn rule_get(&self, rule_id: RuleId) -> CkResult<Rule>;
@@ -137,6 +145,8 @@ pub trait RbacStore: Send + Sync + 'static {
     async fn get_active_rule_bindings(&self, account_id: AccountId) -> CkResult<Vec<RuleBindingRow>>;
     /// Return active role-binding rows (with their HMACs) for an account.
     async fn get_active_role_bindings(&self, account_id: AccountId) -> CkResult<Vec<RoleBindingRow>>;
+    /// Return active role-rule association rows (with their HMACs) for the given role IDs.
+    async fn get_role_rule_rows(&self, role_ids: &[RoleId]) -> CkResult<Vec<RoleRuleRow>>;
 }
 
 // ----------------------------------------------------------------------------------------------
@@ -689,13 +699,13 @@ impl RbacStore for SqlRbacStore {
         Ok(out?)
     }
 
-    async fn add_rule_to_role(&self, actor: AccountId, role_id: RoleId, rule_id: RuleId) -> CkResult<()> {
+    async fn add_rule_to_role(&self, actor: AccountId, role_id: RoleId, rule_id: RuleId, row_hmac: Option<String>) -> CkResult<()> {
         let sql = one_line_sql(
             r#"
-        INSERT INTO rbac_role_rules (role_id, rule_id, created_at, created_by, removed_at, removed_by)
-        VALUES ($1, $2, now(), $3, NULL, NULL)
+        INSERT INTO rbac_role_rules (role_id, rule_id, created_at, created_by, removed_at, removed_by, row_hmac)
+        VALUES ($1, $2, now(), $3, NULL, NULL, $4)
         ON CONFLICT (role_id, rule_id) DO UPDATE
-            SET removed_at = NULL, removed_by = NULL
+            SET removed_at = NULL, removed_by = NULL, row_hmac = $4
     "#,
         );
 
@@ -703,6 +713,7 @@ impl RbacStore for SqlRbacStore {
             .bind(role_id)
             .bind(rule_id)
             .bind(actor)
+            .bind(row_hmac)
             .execute(&self.pool)
             .await?;
 
@@ -1048,17 +1059,39 @@ impl RbacStore for SqlRbacStore {
             .map_err(CkError::from)?;
         Ok(rows)
     }
+
+    async fn get_role_rule_rows(&self, role_ids: &[RoleId]) -> CkResult<Vec<RoleRuleRow>> {
+        if role_ids.is_empty() {
+            return Ok(vec![]);
+        }
+        let role_uuids: Vec<uuid::Uuid> = role_ids.iter().map(|id| id.0).collect();
+        let sql = one_line_sql(r#"
+            SELECT role_id, rule_id, row_hmac
+            FROM rbac_role_rules
+            WHERE role_id = ANY($1)
+              AND removed_at IS NULL
+        "#);
+        let rows = sqlx::query_as::<_, RoleRuleRow>(&sql)
+            .bind(&role_uuids)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(CkError::from)?;
+        Ok(rows)
+    }
 }
 
 // ----------------------------------------------------------------------------------------------
 
 #[cfg(test)]
 pub struct InMemoryRbacStore {
-    roles: Mutex<HashMap<RoleId, RoleRow>>,                  // Just the roles
-    rules: Mutex<HashMap<RuleId, Rule>>,                     // Just the rules
-    roles_with_rules: Mutex<HashMap<RoleId, RoleWithRules>>, // Join table for roles x rules
-    actor_roles: Mutex<HashMap<AccountId, Vec<RoleId>>>,     // Actor to roles
-    actor_rules: Mutex<HashMap<AccountId, Vec<RuleId>>>,     // Actor to rules
+    roles: Mutex<HashMap<RoleId, RoleRow>>,                          // Just the roles
+    rules: Mutex<HashMap<RuleId, Rule>>,                             // Just the rules
+    roles_with_rules: Mutex<HashMap<RoleId, RoleWithRules>>,         // Join table for roles x rules
+    actor_roles: Mutex<HashMap<AccountId, Vec<RoleId>>>,             // Actor to roles
+    actor_rules: Mutex<HashMap<AccountId, Vec<RuleId>>>,             // Actor to rules
+    rule_bindings: Mutex<HashMap<AccountId, Vec<RuleBindingRow>>>,   // Full binding rows (with HMACs)
+    role_bindings: Mutex<HashMap<AccountId, Vec<RoleBindingRow>>>,   // Full binding rows (with HMACs)
+    role_rule_rows: Mutex<HashMap<RoleId, Vec<RoleRuleRow>>>,        // Role-rule association rows (with HMACs)
 }
 
 #[cfg(test)]
@@ -1077,6 +1110,9 @@ impl InMemoryRbacStore {
             roles_with_rules: Mutex::new(HashMap::new()),
             actor_roles: Mutex::new(HashMap::new()),
             actor_rules: Mutex::new(HashMap::new()),
+            rule_bindings: Mutex::new(HashMap::new()),
+            role_bindings: Mutex::new(HashMap::new()),
+            role_rule_rows: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -1228,7 +1264,7 @@ impl RbacStore for InMemoryRbacStore {
         Ok(roles_with_rules.values().cloned().collect())
     }
 
-    async fn add_rule_to_role(&self, _actor: AccountId, role_id: RoleId, rule_id: RuleId) -> CkResult<()> {
+    async fn add_rule_to_role(&self, _actor: AccountId, role_id: RoleId, rule_id: RuleId, row_hmac: Option<String>) -> CkResult<()> {
         let mut roles_with_rules = self.roles_with_rules.lock();
         let Some(entity) = roles_with_rules.get_mut(&role_id) else {
             return Err(RbacError::NotFound("Role not found").into());
@@ -1242,6 +1278,14 @@ impl RbacStore for InMemoryRbacStore {
             }
             entity.rules.push(rule.clone());
         }
+        drop(rules);
+        drop(roles_with_rules);
+
+        let mut role_rule_rows = self.role_rule_rows.lock();
+        let rows = role_rule_rows.entry(role_id).or_default();
+        if !rows.iter().any(|r| r.rule_id == rule_id) {
+            rows.push(RoleRuleRow { role_id, rule_id, row_hmac });
+        }
 
         Ok(())
     }
@@ -1251,6 +1295,13 @@ impl RbacStore for InMemoryRbacStore {
         if let Some(role_with_rules) = roles_with_rules.get_mut(&role_id) {
             role_with_rules.rules.retain(|r| r.id != rule_id);
         }
+        drop(roles_with_rules);
+
+        let mut role_rule_rows = self.role_rule_rows.lock();
+        if let Some(rows) = role_rule_rows.get_mut(&role_id) {
+            rows.retain(|r| r.rule_id != rule_id);
+        }
+
         Ok(())
     }
 
@@ -1319,12 +1370,25 @@ impl RbacStore for InMemoryRbacStore {
         _actor: AccountId,
         rule_id: RuleId,
         account_id: AccountId,
-        _row_hmac: Option<String>,
+        row_hmac: Option<String>,
     ) -> CkResult<()> {
         let mut actor_rules = self.actor_rules.lock();
         let rules = actor_rules.entry(account_id).or_default();
         if !rules.contains(&rule_id) {
             rules.push(rule_id);
+        }
+        drop(actor_rules);
+
+        let mut rule_bindings = self.rule_bindings.lock();
+        let bindings = rule_bindings.entry(account_id).or_default();
+        if !bindings.iter().any(|b| b.rule_id == rule_id) {
+            bindings.push(RuleBindingRow {
+                account_id,
+                rule_id,
+                valid_from: None,
+                valid_until: None,
+                row_hmac,
+            });
         }
         Ok(())
     }
@@ -1338,12 +1402,25 @@ impl RbacStore for InMemoryRbacStore {
         _actor: AccountId,
         role_id: RoleId,
         account_id: AccountId,
-        _row_hmac: Option<String>,
+        row_hmac: Option<String>,
     ) -> CkResult<()> {
         let mut actor_roles = self.actor_roles.lock();
         let roles = actor_roles.entry(account_id).or_default();
         if !roles.contains(&role_id) {
             roles.push(role_id);
+        }
+        drop(actor_roles);
+
+        let mut role_bindings = self.role_bindings.lock();
+        let bindings = role_bindings.entry(account_id).or_default();
+        if !bindings.iter().any(|b| b.role_id == role_id) {
+            bindings.push(RoleBindingRow {
+                account_id,
+                role_id,
+                valid_from: None,
+                valid_until: None,
+                row_hmac,
+            });
         }
         Ok(())
     }
@@ -1356,6 +1433,11 @@ impl RbacStore for InMemoryRbacStore {
         let mut actor_rules = self.actor_rules.lock();
         if let Some(rules) = actor_rules.get_mut(&account_id) {
             rules.retain(|r| r != &rule_id);
+        }
+        drop(actor_rules);
+        let mut rule_bindings = self.rule_bindings.lock();
+        if let Some(bindings) = rule_bindings.get_mut(&account_id) {
+            bindings.retain(|b| b.rule_id != rule_id);
         }
         Ok(())
     }
@@ -1375,6 +1457,11 @@ impl RbacStore for InMemoryRbacStore {
         if let Some(roles) = actor_roles.get_mut(&account_id) {
             roles.retain(|r| r != &role_id);
         }
+        drop(actor_roles);
+        let mut role_bindings = self.role_bindings.lock();
+        if let Some(bindings) = role_bindings.get_mut(&account_id) {
+            bindings.retain(|b| b.role_id != role_id);
+        }
         Ok(())
     }
 
@@ -1388,12 +1475,32 @@ impl RbacStore for InMemoryRbacStore {
         Ok(())
     }
 
-    async fn get_active_rule_bindings(&self, _account_id: AccountId) -> CkResult<Vec<RuleBindingRow>> {
-        Ok(vec![])
+    async fn get_active_rule_bindings(&self, account_id: AccountId) -> CkResult<Vec<RuleBindingRow>> {
+        Ok(self
+            .rule_bindings
+            .lock()
+            .get(&account_id)
+            .cloned()
+            .unwrap_or_default())
     }
 
-    async fn get_active_role_bindings(&self, _account_id: AccountId) -> CkResult<Vec<RoleBindingRow>> {
-        Ok(vec![])
+    async fn get_active_role_bindings(&self, account_id: AccountId) -> CkResult<Vec<RoleBindingRow>> {
+        Ok(self
+            .role_bindings
+            .lock()
+            .get(&account_id)
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    async fn get_role_rule_rows(&self, role_ids: &[RoleId]) -> CkResult<Vec<RoleRuleRow>> {
+        let role_rule_rows = self.role_rule_rows.lock();
+        let rows = role_ids
+            .iter()
+            .flat_map(|id| role_rule_rows.get(id).map(|v| v.as_slice()).unwrap_or(&[]))
+            .cloned()
+            .collect();
+        Ok(rows)
     }
 }
 
@@ -1587,6 +1694,42 @@ impl RbacManager {
                     kind: "rbac_account_roles",
                     id: b.role_id.to_string(),
                 });
+            }
+        }
+
+        // Verify role-rule association rows for every role this account is bound to.
+        let role_ids: Vec<RoleId> = role_bindings.iter().map(|b| b.role_id).collect();
+        if !role_ids.is_empty() {
+            let role_rule_rows = self.store.get_role_rule_rows(&role_ids).await?;
+            for r in &role_rule_rows {
+                let Some(hmac_hex) = &r.row_hmac else {
+                    tracing::error!(
+                        account_id = %account_id,
+                        role_id = %r.role_id,
+                        rule_id = %r.rule_id,
+                        "SECURITY: rbac_role_rules row has no row_hmac"
+                    );
+                    return Err(hierarkey_core::CkError::RowIntegrityViolation {
+                        kind: "rbac_role_rules",
+                        id: r.rule_id.to_string(),
+                    });
+                };
+                let expected = RowHmac::from_hex(hmac_hex).map_err(|_| hierarkey_core::CkError::RowIntegrityViolation {
+                    kind: "rbac_role_rules",
+                    id: r.rule_id.to_string(),
+                })?;
+                if !verify_role_rule(&key, r.role_id, r.rule_id, &expected) {
+                    tracing::error!(
+                        account_id = %account_id,
+                        role_id = %r.role_id,
+                        rule_id = %r.rule_id,
+                        "SECURITY: rbac_role_rules integrity violation"
+                    );
+                    return Err(hierarkey_core::CkError::RowIntegrityViolation {
+                        kind: "rbac_role_rules",
+                        id: r.rule_id.to_string(),
+                    });
+                }
             }
         }
 
@@ -1878,7 +2021,8 @@ impl RbacManager {
 
     pub async fn role_add_rule(&self, ctx: &CallContext, role_id: RoleId, rule_id: RuleId) -> CkResult<()> {
         let actor = ctx.actor.require_account_id().copied()?;
-        let result = self.store.add_rule_to_role(actor, role_id, rule_id).await;
+        let row_hmac = self.signing_slot.peek().map(|key| sign_role_rule(&key, role_id, rule_id).to_hex());
+        let result = self.store.add_rule_to_role(actor, role_id, rule_id, row_hmac).await;
         if result.is_ok() {
             self.cache.invalidate_all();
         }

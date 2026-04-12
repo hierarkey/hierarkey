@@ -91,6 +91,11 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "0088_account_status_tampered",
         include_str!("../migrations/0088_account_status_tampered.sql"),
     ),
+    (
+        "0089_rbac_role_rules_hmac",
+        include_str!("../migrations/0089_rbac_role_rules_hmac.sql"),
+    ),
+    ("0090_pat_hmac", include_str!("../migrations/0090_pat_hmac.sql")),
 ];
 
 /// Returns true if a migration must run outside a transaction.

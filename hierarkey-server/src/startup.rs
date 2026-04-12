@@ -3,7 +3,11 @@
 
 use crate::audit_context::CallContext;
 use crate::global::keys::SigningKey;
+use crate::global::row_hmac::{sign_account, sign_account_role_binding, sign_role_rule, sign_rule};
+use crate::manager::account::AccountId;
 use crate::manager::masterkey::MasterKeyStatus;
+use crate::manager::rbac::rule::RuleRow;
+use crate::rbac::{RoleId, RuleId};
 use crate::global::config::{Config, ServerMode};
 use crate::http_server::federated_auth_provider::FederatedAuthProvider;
 use crate::http_server::mfa_provider::MfaProvider;
@@ -329,7 +333,7 @@ pub async fn build_app_state(cfg: Config, extensions: &[Box<dyn ServerExtension>
     let secret_manager = Arc::new(SecretManager::new(store));
 
     let store = Arc::new(SqlTokenStore::new(pool.clone()));
-    let token_manager = Arc::new(TokenManager::new(store));
+    let token_manager = Arc::new(TokenManager::new(store, signing_slot.clone()));
 
     let token_service = Arc::new(TokenService::new(token_manager.clone()));
 
@@ -535,12 +539,121 @@ pub async fn load_signing_key(state: &AppState) -> CkResult<()> {
 
     let crypto = state.masterkey_service.get_crypto_handle(active_mk)?;
     let key_bytes = crypto.unwrap_signing_key(&enc_sk)?;
-    state.signing_slot.load(SigningKey::from_bytes(&key_bytes)?);
+    let signing_key = SigningKey::from_bytes(&key_bytes)?;
+    state.signing_slot.load(signing_key.clone());
+
+    // Sign any rows created before the signing key was provisioned (migrations, bootstrap).
+    // This is idempotent: rows already signed are unchanged.
+    if let Err(e) = backfill_row_hmacs(&state.pool, &signing_key).await {
+        warn!(err = %e, "backfill of NULL row HMACs failed (non-fatal)");
+    }
+
+    Ok(())
+}
+
+/// Sign all rows with NULL `row_hmac` in tables that can have pre-signing-key content
+/// (accounts created by migrations, role-rule associations from initial population, etc.).
+///
+/// Called once after the signing key is loaded.  Idempotent — rows already signed are skipped.
+async fn backfill_row_hmacs(pool: &sqlx::PgPool, key: &SigningKey) -> CkResult<()> {
+    use sqlx::Row;
+
+    // ── rbac_rules ────────────────────────────────────────────────────────────
+    let rule_rows = sqlx::query_as::<_, RuleRow>(
+        "SELECT * FROM rbac_rules WHERE row_hmac IS NULL AND deleted_at IS NULL",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    for rule_row in &rule_rows {
+        let hmac_hex = sign_rule(key, rule_row).to_hex();
+        sqlx::query("UPDATE rbac_rules SET row_hmac = $2 WHERE id = $1")
+            .bind(rule_row.id.0)
+            .bind(&hmac_hex)
+            .execute(pool)
+            .await?;
+    }
+
+    if !rule_rows.is_empty() {
+        tracing::info!(count = rule_rows.len(), "backfilled row_hmac for rbac_rules");
+    }
+
+    // ── rbac_role_rules ───────────────────────────────────────────────────────
+    let rows = sqlx::query(
+        "SELECT role_id, rule_id FROM rbac_role_rules WHERE row_hmac IS NULL AND removed_at IS NULL",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    for row in &rows {
+        let role_id = RoleId(row.get::<uuid::Uuid, _>("role_id"));
+        let rule_id = RuleId(row.get::<uuid::Uuid, _>("rule_id"));
+        let hmac_hex = sign_role_rule(key, role_id, rule_id).to_hex();
+        sqlx::query("UPDATE rbac_role_rules SET row_hmac = $3 WHERE role_id = $1 AND rule_id = $2")
+            .bind(role_id.0)
+            .bind(rule_id.0)
+            .bind(&hmac_hex)
+            .execute(pool)
+            .await?;
+    }
+
+    if !rows.is_empty() {
+        tracing::info!(count = rows.len(), "backfilled row_hmac for rbac_role_rules");
+    }
+
+    // ── rbac_account_roles ────────────────────────────────────────────────────
+    let rows = sqlx::query(
+        "SELECT account_id, role_id, valid_from, valid_until FROM rbac_account_roles WHERE row_hmac IS NULL",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    for row in &rows {
+        let account_id = AccountId(row.get::<uuid::Uuid, _>("account_id"));
+        let role_id = RoleId(row.get::<uuid::Uuid, _>("role_id"));
+        let valid_from: Option<chrono::DateTime<chrono::Utc>> = row.get("valid_from");
+        let valid_until: Option<chrono::DateTime<chrono::Utc>> = row.get("valid_until");
+        let hmac_hex = sign_account_role_binding(key, account_id, role_id, valid_from, valid_until).to_hex();
+        sqlx::query(
+            "UPDATE rbac_account_roles SET row_hmac = $3 WHERE account_id = $1 AND role_id = $2",
+        )
+        .bind(account_id.0)
+        .bind(role_id.0)
+        .bind(&hmac_hex)
+        .execute(pool)
+        .await?;
+    }
+
+    if !rows.is_empty() {
+        tracing::info!(count = rows.len(), "backfilled row_hmac for rbac_account_roles");
+    }
+
+    // ── accounts (system accounts created by migrations) ───────────────────
+    // We fetch full account rows so sign_account can cover all fields.
+    let accounts = sqlx::query_as::<_, crate::manager::account::Account>(
+        "SELECT * FROM accounts WHERE row_hmac IS NULL",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    for account in &accounts {
+        let hmac_hex = sign_account(key, account).to_hex();
+        sqlx::query("UPDATE accounts SET row_hmac = $2 WHERE id = $1")
+            .bind(account.id.0)
+            .bind(&hmac_hex)
+            .execute(pool)
+            .await?;
+    }
+
+    if !accounts.is_empty() {
+        tracing::info!(count = accounts.len(), "backfilled row_hmac for accounts");
+    }
+
     Ok(())
 }
 
 /// Load all master keys from the database into the in-memory keyring.
-async fn load_master_keys(state: &AppState) -> CkResult<()> {
+pub async fn load_master_keys(state: &AppState) -> CkResult<()> {
     let ctx = CallContext::system();
     let masterkeys = state.masterkey_service.find_all(&ctx).await?;
     for master_key in masterkeys {
