@@ -90,10 +90,13 @@ pub(crate) async fn mfa_verify(
     verify_result?;
 
     // Code is valid — issue full access + refresh tokens.
-    let access_ttl = req
-        .ttl_minutes
-        .map(|t| t as i64)
-        .unwrap_or(state.auth_service.access_token_ttl_minutes);
+    let access_ttl = match req.ttl_minutes {
+        Some(t) if t == 0 || t as i64 > crate::manager::token::MAX_TTL_MINUTES => {
+            return Err(HttpError::bad_request(ctx, "ttl_minutes out of range"));
+        }
+        Some(t) => t as i64,
+        None => state.auth_service.access_token_ttl_minutes,
+    };
     let refresh_ttl = state.auth_service.refresh_token_ttl_minutes;
 
     let (access_str, access_pat) = state
