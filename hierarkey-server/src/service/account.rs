@@ -694,9 +694,7 @@ impl AccountService {
     pub async fn recover_tampered_account(&self, ctx: &CallContext, account_id: AccountId) -> CkResult<()> {
         self.account_manager.recover_account(ctx, account_id).await
     }
-
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -722,7 +720,10 @@ mod tests {
         let signing_slot = Arc::new(crate::service::signing_key_slot::SigningKeySlot::new());
         let manager = Arc::new(AccountManager::new(store.clone(), signing_slot));
         let token_store = Arc::new(InMemoryTokenStore::new());
-        let token_manager = Arc::new(TokenManager::new(token_store, Arc::new(crate::service::signing_key_slot::SigningKeySlot::new())));
+        let token_manager = Arc::new(TokenManager::new(
+            token_store,
+            Arc::new(crate::service::signing_key_slot::SigningKeySlot::new()),
+        ));
         let svc = AccountService::new(manager, token_manager);
         (svc, store)
     }

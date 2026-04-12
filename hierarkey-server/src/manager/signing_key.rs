@@ -6,8 +6,8 @@ use crate::global::short_id::ShortId;
 use crate::manager::kek::KekEncAlgo;
 use crate::manager::masterkey::MasterkeyId;
 use crate::manager::secret::encrypted_data::EncryptedData;
-use crate::service::masterkey::provider::crypto::MasterKeyCrypto;
 use crate::one_line_sql;
+use crate::service::masterkey::provider::crypto::MasterKeyCrypto;
 use hierarkey_core::{CkError, CkResult};
 #[cfg(test)]
 use parking_lot::Mutex;
@@ -259,7 +259,8 @@ impl SigningKeyManager {
         new_masterkey_id: MasterkeyId,
     ) -> CkResult<EncryptedSigningKey> {
         self.store.retire_active().await?;
-        self.create(&new_ciphertext, KekEncAlgo::Aes256Gcm, new_masterkey_id).await
+        self.create(&new_ciphertext, KekEncAlgo::Aes256Gcm, new_masterkey_id)
+            .await
     }
 }
 
@@ -283,7 +284,10 @@ mod tests {
         let masterkey_id = MasterkeyId::new();
         let data = make_encrypted_data();
 
-        let key = manager.create(&data, KekEncAlgo::Aes256Gcm, masterkey_id).await.unwrap();
+        let key = manager
+            .create(&data, KekEncAlgo::Aes256Gcm, masterkey_id)
+            .await
+            .unwrap();
         let found = manager.fetch_active().await.unwrap();
 
         assert!(found.is_some());
@@ -298,7 +302,10 @@ mod tests {
         let masterkey_id = MasterkeyId::new();
         let data = make_encrypted_data();
 
-        manager.create(&data, KekEncAlgo::Aes256Gcm, masterkey_id).await.unwrap();
+        manager
+            .create(&data, KekEncAlgo::Aes256Gcm, masterkey_id)
+            .await
+            .unwrap();
         manager.retire_active().await.unwrap();
 
         let found = manager.fetch_active().await.unwrap();

@@ -435,7 +435,10 @@ mod tests {
         let signing_slot = Arc::new(crate::service::signing_key_slot::SigningKeySlot::new());
         let account_manager = Arc::new(AccountManager::new(account_store.clone(), signing_slot));
         let token_store = Arc::new(InMemoryTokenStore::new());
-        let token_manager = Arc::new(TokenManager::new(token_store.clone(), Arc::new(crate::service::signing_key_slot::SigningKeySlot::new())));
+        let token_manager = Arc::new(TokenManager::new(
+            token_store.clone(),
+            Arc::new(crate::service::signing_key_slot::SigningKeySlot::new()),
+        ));
         let config = AuthConfig::default();
         let svc = AuthService::new(account_manager, token_manager, &config).unwrap();
         (svc, account_store, token_store)

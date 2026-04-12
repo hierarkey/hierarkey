@@ -28,7 +28,9 @@ impl Default for SigningKeySlot {
 impl SigningKeySlot {
     /// Create an empty slot (no key loaded yet).
     pub fn new() -> Self {
-        Self { inner: RwLock::new(None) }
+        Self {
+            inner: RwLock::new(None),
+        }
     }
 
     /// Replace the current key with a newly decrypted one.

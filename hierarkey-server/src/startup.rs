@@ -2,27 +2,27 @@
 // Copyright (C) 2025-2026 Joshua Thijssen <jthijssen@hierarkey.com>
 
 use crate::audit_context::CallContext;
+use crate::global::config::{Config, ServerMode};
 use crate::global::keys::SigningKey;
 use crate::global::row_hmac::{sign_account, sign_account_role_binding, sign_role_rule, sign_rule};
-use crate::manager::account::AccountId;
-use crate::manager::masterkey::MasterKeyStatus;
-use crate::manager::rbac::rule::RuleRow;
-use crate::rbac::{RoleId, RuleId};
-use crate::global::config::{Config, ServerMode};
 use crate::http_server::federated_auth_provider::FederatedAuthProvider;
 use crate::http_server::mfa_provider::MfaProvider;
 use crate::http_server::mtls_provider::MtlsAuthProvider;
 use crate::http_server::nonce_cache::NonceCache;
 use crate::http_server::{AppState, ServerExtension, build_router, start_http_server, start_tls_server};
+use crate::manager::account::AccountId;
 use crate::manager::account::{AccountManager, SqlAccountStore};
 use crate::manager::federated_identity::FederatedIdentityManager;
 use crate::manager::kek::{KekManager, SqlKekStore};
+use crate::manager::masterkey::MasterKeyStatus;
 use crate::manager::masterkey::{MasterKeyUsage, SqlMasterKeyStore};
 use crate::manager::namespace::{NamespaceManager, SqlNamespaceStore};
 use crate::manager::rbac::SqlRbacStore;
+use crate::manager::rbac::rule::RuleRow;
 use crate::manager::secret::sql_store::SqlSecretStore;
 use crate::manager::signing_key::{SigningKeyManager, SqlSigningKeyStore};
 use crate::manager::token::SqlTokenStore;
+use crate::rbac::{RoleId, RuleId};
 use crate::service::masterkey::MasterKeyProviderType;
 use crate::service::masterkey::provider::insecure::InsecureMasterKeyProvider;
 use crate::service::masterkey::provider::passphrase::PassphraseMasterKeyProvider;
@@ -559,11 +559,10 @@ async fn backfill_row_hmacs(pool: &sqlx::PgPool, key: &SigningKey) -> CkResult<(
     use sqlx::Row;
 
     // ── rbac_rules ────────────────────────────────────────────────────────────
-    let rule_rows = sqlx::query_as::<_, RuleRow>(
-        "SELECT * FROM rbac_rules WHERE row_hmac IS NULL AND deleted_at IS NULL",
-    )
-    .fetch_all(pool)
-    .await?;
+    let rule_rows =
+        sqlx::query_as::<_, RuleRow>("SELECT * FROM rbac_rules WHERE row_hmac IS NULL AND deleted_at IS NULL")
+            .fetch_all(pool)
+            .await?;
 
     for rule_row in &rule_rows {
         let hmac_hex = sign_rule(key, rule_row).to_hex();
@@ -579,11 +578,10 @@ async fn backfill_row_hmacs(pool: &sqlx::PgPool, key: &SigningKey) -> CkResult<(
     }
 
     // ── rbac_role_rules ───────────────────────────────────────────────────────
-    let rows = sqlx::query(
-        "SELECT role_id, rule_id FROM rbac_role_rules WHERE row_hmac IS NULL AND removed_at IS NULL",
-    )
-    .fetch_all(pool)
-    .await?;
+    let rows =
+        sqlx::query("SELECT role_id, rule_id FROM rbac_role_rules WHERE row_hmac IS NULL AND removed_at IS NULL")
+            .fetch_all(pool)
+            .await?;
 
     for row in &rows {
         let role_id = RoleId(row.get::<uuid::Uuid, _>("role_id"));
@@ -614,14 +612,12 @@ async fn backfill_row_hmacs(pool: &sqlx::PgPool, key: &SigningKey) -> CkResult<(
         let valid_from: Option<chrono::DateTime<chrono::Utc>> = row.get("valid_from");
         let valid_until: Option<chrono::DateTime<chrono::Utc>> = row.get("valid_until");
         let hmac_hex = sign_account_role_binding(key, account_id, role_id, valid_from, valid_until).to_hex();
-        sqlx::query(
-            "UPDATE rbac_account_roles SET row_hmac = $3 WHERE account_id = $1 AND role_id = $2",
-        )
-        .bind(account_id.0)
-        .bind(role_id.0)
-        .bind(&hmac_hex)
-        .execute(pool)
-        .await?;
+        sqlx::query("UPDATE rbac_account_roles SET row_hmac = $3 WHERE account_id = $1 AND role_id = $2")
+            .bind(account_id.0)
+            .bind(role_id.0)
+            .bind(&hmac_hex)
+            .execute(pool)
+            .await?;
     }
 
     if !rows.is_empty() {
@@ -630,11 +626,10 @@ async fn backfill_row_hmacs(pool: &sqlx::PgPool, key: &SigningKey) -> CkResult<(
 
     // ── accounts (system accounts created by migrations) ───────────────────
     // We fetch full account rows so sign_account can cover all fields.
-    let accounts = sqlx::query_as::<_, crate::manager::account::Account>(
-        "SELECT * FROM accounts WHERE row_hmac IS NULL",
-    )
-    .fetch_all(pool)
-    .await?;
+    let accounts =
+        sqlx::query_as::<_, crate::manager::account::Account>("SELECT * FROM accounts WHERE row_hmac IS NULL")
+            .fetch_all(pool)
+            .await?;
 
     for account in &accounts {
         let hmac_hex = sign_account(key, account).to_hex();

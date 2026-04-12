@@ -4,7 +4,7 @@
 use crate::audit_context::CallContext;
 #[cfg(test)]
 use crate::global::DEFAULT_OFFSET_VALUE;
-use crate::global::row_hmac::{sign_account, sign_account_role_binding, verify_account, RowHmac};
+use crate::global::row_hmac::{RowHmac, sign_account, sign_account_role_binding, verify_account};
 use crate::global::short_id::ShortId;
 use crate::global::uuid_id::Identifier;
 use crate::global::{DEFAULT_LIMIT_VALUE, MAX_LIMIT_VALUE};
@@ -295,7 +295,12 @@ pub trait AccountStore: Send + Sync {
     async fn is_admin(&self, account_id: AccountId) -> CkResult<bool>;
     /// Returns the UUID of the `platform:admin` role, or None if it doesn't exist.
     async fn get_admin_role_id(&self) -> CkResult<Option<uuid::Uuid>>;
-    async fn grant_admin(&self, ctx: &CallContext, target_account_id: AccountId, row_hmac: Option<String>) -> CkResult<()>;
+    async fn grant_admin(
+        &self,
+        ctx: &CallContext,
+        target_account_id: AccountId,
+        row_hmac: Option<String>,
+    ) -> CkResult<()>;
     async fn revoke_admin(&self, ctx: &CallContext, target_account_id: AccountId) -> CkResult<()>;
 
     async fn delete_account(&self, ctx: &CallContext, account_id: AccountId) -> CkResult<()>;
@@ -331,7 +336,6 @@ pub trait AccountStore: Send + Sync {
         enabled: bool,
         secret: Option<String>,
     ) -> CkResult<()>;
-
 }
 
 pub struct SqlAccountStore {
@@ -683,16 +687,19 @@ impl AccountStore for SqlAccountStore {
     ///
     /// `actor` is recorded in `created_by` (can be None for system/bootstrap actions).
     async fn get_admin_role_id(&self) -> CkResult<Option<uuid::Uuid>> {
-        let id: Option<uuid::Uuid> = sqlx::query_scalar(
-            "SELECT id FROM rbac_roles WHERE name = $1",
-        )
-        .bind(ADMIN_ROLE_NAME)
-        .fetch_optional(&self.pool)
-        .await?;
+        let id: Option<uuid::Uuid> = sqlx::query_scalar("SELECT id FROM rbac_roles WHERE name = $1")
+            .bind(ADMIN_ROLE_NAME)
+            .fetch_optional(&self.pool)
+            .await?;
         Ok(id)
     }
 
-    async fn grant_admin(&self, ctx: &CallContext, target_account_id: AccountId, row_hmac: Option<String>) -> CkResult<()> {
+    async fn grant_admin(
+        &self,
+        ctx: &CallContext,
+        target_account_id: AccountId,
+        row_hmac: Option<String>,
+    ) -> CkResult<()> {
         sqlx::query(
             r#"
             INSERT INTO rbac_account_roles (account_id, role_id, created_by, row_hmac)
@@ -986,7 +993,6 @@ impl AccountStore for SqlAccountStore {
             .await?;
         Ok(())
     }
-
 }
 
 #[cfg(test)]
@@ -1170,7 +1176,12 @@ impl AccountStore for InMemoryAccountStore {
         Ok(None)
     }
 
-    async fn grant_admin(&self, _ctx: &CallContext, target_account_id: AccountId, _row_hmac: Option<String>) -> CkResult<()> {
+    async fn grant_admin(
+        &self,
+        _ctx: &CallContext,
+        target_account_id: AccountId,
+        _row_hmac: Option<String>,
+    ) -> CkResult<()> {
         // If account doesn't exist (or is deleted), decide your policy:
         // Here: error if missing, ignore if deleted.
         let accounts = self.accounts.lock();
@@ -1356,7 +1367,6 @@ impl AccountStore for InMemoryAccountStore {
         }
         Ok(())
     }
-
 }
 
 pub struct AccountManager {
@@ -1471,7 +1481,7 @@ impl AccountManager {
     /// Verify integrity of `account` and, on failure, persist the `Tampered`
     /// status and return an error.  On success, populate the cache.
     async fn verify_integrity(&self, account: &Account) -> CkResult<()> {
-        if let Err(_) = self.hmac_check(account) {
+        if self.hmac_check(account).is_err() {
             return Err(self.mark_tampered(account).await);
         }
         self.cache_insert(account);
@@ -1990,10 +2000,14 @@ impl AccountManager {
     /// stale or tampered `row_hmac` is written back, and the server will immediately
     /// re-mark the account as tampered on the next load.
     pub async fn recover_account(&self, ctx: &CallContext, account_id: AccountId) -> CkResult<()> {
-        let mut account = self.store.find_by_id(account_id).await?.ok_or_else(|| CkError::ResourceNotFound {
-            kind: "account",
-            id: account_id.to_string(),
-        })?;
+        let mut account = self
+            .store
+            .find_by_id(account_id)
+            .await?
+            .ok_or_else(|| CkError::ResourceNotFound {
+                kind: "account",
+                id: account_id.to_string(),
+            })?;
 
         if account.status != AccountStatus::Tampered {
             return Err(hierarkey_core::error::validation::ValidationError::InvalidOperation {
@@ -2010,7 +2024,6 @@ impl AccountManager {
         self.update_account(ctx, &account).await
     }
 }
-
 
 #[cfg(test)]
 mod tests {

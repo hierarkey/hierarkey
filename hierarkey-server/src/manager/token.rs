@@ -2,7 +2,7 @@
 // Copyright (C) 2025-2026 Joshua Thijssen <jthijssen@hierarkey.com>
 
 use crate::audit_context::CallContext;
-use crate::global::row_hmac::{sign_pat, verify_pat, RowHmac};
+use crate::global::row_hmac::{RowHmac, sign_pat, verify_pat};
 use crate::global::short_id::ShortId;
 use crate::global::uuid_id::Identifier;
 use crate::http_server::handlers::auth_response::AuthScope;
@@ -488,9 +488,10 @@ impl TokenManager {
         let now = Utc::now();
         let expires_at = now + Duration::minutes(ttl_minutes);
 
-        let row_hmac = self.signing_slot.peek().map(|key| {
-            sign_pat(&key, token_id.0, account_id, expires_at, &purpose.to_string(), None).to_hex()
-        });
+        let row_hmac = self
+            .signing_slot
+            .peek()
+            .map(|key| sign_pat(&key, token_id.0, account_id, expires_at, &purpose.to_string(), None).to_hex());
 
         let pat = PersonalAccessToken {
             id: token_id,
@@ -574,10 +575,20 @@ impl TokenManager {
             let hmac_hex = pat.row_hmac.as_deref().ok_or(AuthError::Unauthenticated {
                 reason: AuthFailReason::InvalidToken,
             })?;
-            let expected = RowHmac::from_hex(hmac_hex).map_err(|_| CkError::from(AuthError::Unauthenticated {
-                reason: AuthFailReason::InvalidToken,
-            }))?;
-            if !verify_pat(&key, pat.id.0, pat.account_id, pat.expires_at, &pat.purpose.to_string(), pat.revoked_at, &expected) {
+            let expected = RowHmac::from_hex(hmac_hex).map_err(|_| {
+                CkError::from(AuthError::Unauthenticated {
+                    reason: AuthFailReason::InvalidToken,
+                })
+            })?;
+            if !verify_pat(
+                &key,
+                pat.id.0,
+                pat.account_id,
+                pat.expires_at,
+                &pat.purpose.to_string(),
+                pat.revoked_at,
+                &expected,
+            ) {
                 return Err(AuthError::Unauthenticated {
                     reason: AuthFailReason::InvalidToken,
                 }
@@ -595,20 +606,20 @@ impl TokenManager {
         let revoked = self.store.revoke_token(token_id).await?;
         if revoked {
             // Re-sign the PAT now that revoked_at has changed
-            if let Some(key) = self.signing_slot.peek() {
-                if let Ok(Some(pat)) = self.store.find_token(token_id).await {
-                    let hmac_hex = sign_pat(
-                        &key,
-                        pat.id.0,
-                        pat.account_id,
-                        pat.expires_at,
-                        &pat.purpose.to_string(),
-                        pat.revoked_at,
-                    )
-                    .to_hex();
-                    if let Err(e) = self.store.update_pat_hmac(token_id, &hmac_hex).await {
-                        tracing::warn!(token_id = %token_id, err = %e, "failed to re-sign PAT after revocation");
-                    }
+            if let Some(key) = self.signing_slot.peek()
+                && let Ok(Some(pat)) = self.store.find_token(token_id).await
+            {
+                let hmac_hex = sign_pat(
+                    &key,
+                    pat.id.0,
+                    pat.account_id,
+                    pat.expires_at,
+                    &pat.purpose.to_string(),
+                    pat.revoked_at,
+                )
+                .to_hex();
+                if let Err(e) = self.store.update_pat_hmac(token_id, &hmac_hex).await {
+                    tracing::warn!(token_id = %token_id, err = %e, "failed to re-sign PAT after revocation");
                 }
             }
         }

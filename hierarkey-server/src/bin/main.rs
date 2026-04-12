@@ -19,10 +19,13 @@ use hierarkey_server::{
     preview::{preview_enabled, preview_expired, preview_expiry_date},
     service::{
         account::{AccountData, CustomAccountData, CustomUserAccountData},
-        masterkey::{BackendCreate, CreateMasterKeyRequest, MasterKeyProviderType},
         masterkey::provider::UnlockArgs,
+        masterkey::{BackendCreate, CreateMasterKeyRequest, MasterKeyProviderType},
     },
-    startup::{StartupChecks, build_app_state, install_crypto_provider, load_master_keys, load_signing_key, setup_logging, start_server},
+    startup::{
+        StartupChecks, build_app_state, install_crypto_provider, load_master_keys, load_signing_key, setup_logging,
+        start_server,
+    },
 };
 use std::{io::Write, process::exit};
 use tracing::{error, info};
@@ -173,9 +176,7 @@ async fn main() {
         } => exitcode(
             bootstrap_admin_account(&config, account_name, insecure_password.map(Zeroizing::new), !no_pwd_change).await,
         ),
-        Commands::RecoverAccount { config, account_name } => {
-            exitcode(recover_account(&config, account_name).await)
-        }
+        Commands::RecoverAccount { config, account_name } => exitcode(recover_account(&config, account_name).await),
         Commands::BootstrapSigningKey { config } => exitcode(bootstrap_signing_key(&config).await),
     };
 
@@ -376,9 +377,7 @@ async fn bootstrap_signing_key(config_path: &str) -> CkResult<()> {
         .ok_or_else(|| CkError::MasterKey("no active master key found".into()))?;
 
     if state.masterkey_service.is_locked(&ctx, active_mk)? {
-        return Err(CkError::MasterKey(
-            "active master key is locked; unlock it first".into(),
-        ));
+        return Err(CkError::MasterKey("active master key is locked; unlock it first".into()));
     }
 
     let crypto = state.masterkey_service.get_crypto_handle(active_mk)?;
@@ -450,15 +449,13 @@ async fn recover_account(config_path: &str, account_name: AccountName) -> CkResu
         .ok_or_else(|| CkError::MasterKey("no active master key found".into()))?;
 
     // Check whether a signing key has been provisioned.
-    let enc_signing_key = state
-        .signing_key_manager
-        .fetch_active()
-        .await?
-        .ok_or_else(|| CkError::Custom(
+    let enc_signing_key = state.signing_key_manager.fetch_active().await?.ok_or_else(|| {
+        CkError::Custom(
             "no signing key found; row integrity is not yet provisioned \
              (run 'bootstrap-signing-key' first)"
                 .into(),
-        ))?;
+        )
+    })?;
 
     // Prompt for passphrase and unlock the master key (only if locked).
     if state
@@ -486,15 +483,9 @@ async fn recover_account(config_path: &str, account_name: AccountName) -> CkResu
     state.signing_slot.load(signing_key);
 
     // Step 3-4: recover and re-sign
-    state
-        .account_service
-        .recover_tampered_account(&ctx, account.id)
-        .await?;
+    state.account_service.recover_tampered_account(&ctx, account.id).await?;
 
-    println!(
-        "Account '{}' has been recovered and re-signed with the current signing key.",
-        account_name
-    );
+    println!("Account '{account_name}' has been recovered and re-signed with the current signing key.");
     println!("IMPORTANT: change the account password before putting it back into service,");
     println!("in case the tamper included a password hash substitution.");
 

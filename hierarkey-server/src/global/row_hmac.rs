@@ -37,8 +37,8 @@ use crate::manager::account::{Account, AccountId};
 use crate::manager::rbac::rule::RuleRow;
 use crate::rbac::{RoleId, RuleId, TargetKind};
 use chrono::{DateTime, Utc};
-use hierarkey_core::error::crypto::CryptoError;
 use hierarkey_core::CkResult;
+use hierarkey_core::error::crypto::CryptoError;
 use uuid::Uuid;
 
 // -- Context strings (domain separators) --
@@ -377,8 +377,8 @@ mod tests {
     use crate::manager::rbac::rule::RuleRow;
     use crate::rbac::{PolicyEffect, RoleId, RuleId, TargetKind};
     use chrono::Utc;
-    use hierarkey_core::resources::AccountName;
     use hierarkey_core::Metadata;
+    use hierarkey_core::resources::AccountName;
     use std::str::FromStr;
     use uuid::Uuid;
 

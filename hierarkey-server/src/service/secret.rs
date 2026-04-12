@@ -1031,7 +1031,10 @@ mod tests {
         let secret_manager = Arc::new(SecretManager::new(secret_store));
 
         let rbac_store = Arc::new(InMemoryRbacStore::new());
-        let rbac_manager = Arc::new(RbacManager::new(rbac_store, Arc::new(crate::service::signing_key_slot::SigningKeySlot::new())));
+        let rbac_manager = Arc::new(RbacManager::new(
+            rbac_store,
+            Arc::new(crate::service::signing_key_slot::SigningKeySlot::new()),
+        ));
         let rbac_service = Arc::new(RbacService::new(rbac_manager));
 
         let dek_decryptor = Arc::new(MockDekDecryptor);
@@ -1048,7 +1051,10 @@ mod tests {
         let secret_manager = Arc::new(SecretManager::new(secret_store));
 
         let rbac_store = Arc::new(InMemoryRbacStore::new());
-        let rbac_manager = Arc::new(RbacManager::new(rbac_store.clone(), Arc::new(crate::service::signing_key_slot::SigningKeySlot::new())));
+        let rbac_manager = Arc::new(RbacManager::new(
+            rbac_store.clone(),
+            Arc::new(crate::service::signing_key_slot::SigningKeySlot::new()),
+        ));
         let rbac_service = Arc::new(RbacService::new(rbac_manager));
 
         let dek_decryptor = Arc::new(MockDekDecryptor);
@@ -1861,7 +1867,10 @@ mod tests {
             .rule_create(user_id, spec, hierarkey_core::Metadata::new())
             .await
             .unwrap();
-        rbac_store.bind_rule_to_user(user_id, rule.id, user_id, None).await.unwrap();
+        rbac_store
+            .bind_rule_to_user(user_id, rule.id, user_id, None)
+            .await
+            .unwrap();
 
         let req = SecretSearchRequest::default();
         let resp = svc.search_secrets(&user_ctx, &req).await.unwrap();
@@ -1913,7 +1922,10 @@ mod tests {
             .rule_create(user_id, spec, hierarkey_core::Metadata::new())
             .await
             .unwrap();
-        rbac_store.bind_rule_to_user(user_id, rule.id, user_id, None).await.unwrap();
+        rbac_store
+            .bind_rule_to_user(user_id, rule.id, user_id, None)
+            .await
+            .unwrap();
 
         let req = SecretSearchRequest::default();
         let resp = svc.search_secrets(&user_ctx, &req).await.unwrap();
@@ -1944,7 +1956,10 @@ mod tests {
             .rule_create(user_id, spec, hierarkey_core::Metadata::new())
             .await
             .unwrap();
-        rbac_store.bind_rule_to_user(user_id, rule.id, user_id, None).await.unwrap();
+        rbac_store
+            .bind_rule_to_user(user_id, rule.id, user_id, None)
+            .await
+            .unwrap();
 
         // Page 1: limit=2, offset=0 — total should be 3 (filtered), first page has 2.
         let req = SecretSearchRequest {
