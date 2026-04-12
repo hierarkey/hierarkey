@@ -116,16 +116,19 @@ fn read_file_to_string(path: &Path) -> CkResult<Zeroizing<String>> {
             // Give a clear message: distinguish missing file vs missing directory
             let dir = path.parent().unwrap_or(path);
             if !dir.exists() {
-                CkError::MasterKey(format!(
+                tracing::debug!(
                     "master key directory does not exist: {} (expected file: {})",
                     dir.display(),
                     path.display()
-                ))
+                );
+                CkError::MasterKey("master key directory does not exist".into())
             } else {
-                CkError::MasterKey(format!("master key file not found: {}", path.display()))
+                tracing::debug!("master key file not found: {}", path.display());
+                CkError::MasterKey("master key file not found".into())
             }
         } else {
-            CkError::MasterKey(format!("failed to open master key file {}: {e}", path.display()))
+            tracing::debug!("failed to open master key file {}: {e}", path.display());
+            CkError::MasterKey("failed to open master key file".into())
         }
     })?;
 
