@@ -34,7 +34,7 @@ pub struct SetCertResponse {
 pub(crate) async fn set_cert(
     State(state): State<AppState>,
     Extension(call_ctx): Extension<CallContext>,
-    Extension(_auth): Extension<AuthUser>,
+    Extension(auth): Extension<AuthUser>,
     Path(account_name): Path<AccountName>,
     ApiJson(req): ApiJson<SetCertRequest>,
 ) -> ApiResult<Json<ApiResponse<SetCertResponse>>> {
@@ -48,6 +48,14 @@ pub(crate) async fn set_cert(
         .await
         .ctx(ctx)?
         .ok_or_else(|| HttpError::not_found(ctx, format!("account '{account_name}' not found")))?;
+
+    // Authorization: caller must own the account or be an admin.
+    if auth.user.id != account.id && !state.account_service.is_admin(&call_ctx, auth.user.id).await.ctx(ctx)? {
+        return Err(HttpError::forbidden(
+            ctx,
+            "Admin privilege required to set certificate on another account",
+        ));
+    }
 
     let (fingerprint, subject) = match req.certificate_pem {
         None => (None, None),
@@ -104,4 +112,108 @@ pub(crate) async fn set_cert(
 
     let status = ApiStatus::new(ApiCode::AccountUpdated, "Client certificate updated".to_string());
     Ok(Json(ApiResponse::ok(status, SetCertResponse { fingerprint, subject })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audit_context::CallContext;
+    use crate::global::test_utils::create_mock_app_state;
+    use crate::http_server::handlers::auth_response::AuthScope;
+    use crate::http_server::middleware::{audit_ctx_middleware, auth_middleware};
+    use crate::manager::account::Password;
+    use crate::service::account::{AccountData, CustomAccountData, CustomUserAccountData};
+    use axum::Router;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::middleware as axum_middleware;
+    use axum::routing::post;
+    use tower::ServiceExt;
+
+    fn build_test_router(state: crate::http_server::AppState) -> Router {
+        Router::new()
+            .route("/v1/accounts/{account}/cert", post(set_cert))
+            .layer(axum_middleware::from_fn_with_state(state.clone(), auth_middleware))
+            .layer(axum_middleware::from_fn(audit_ctx_middleware))
+            .with_state(state)
+    }
+
+    /// Create a regular (non-admin) user account and return a valid Auth-scoped token for it.
+    async fn create_user_with_token(state: &crate::http_server::AppState, name: &str) -> (crate::Account, String) {
+        let ctx = CallContext::for_account(state.system_account_id.unwrap());
+        let data = AccountData {
+            account_name: AccountName::try_from(name.to_string()).unwrap(),
+            is_active: true,
+            description: None,
+            labels: Default::default(),
+            custom: CustomAccountData::User(CustomUserAccountData {
+                full_name: None,
+                email: None,
+                password: Password::new("test-password-12345"),
+                must_change_password: false,
+            }),
+        };
+        let account = state.account_service.create_account(&ctx, &data).await.unwrap();
+        let (token, _) = state
+            .auth_service
+            .create_pat(&ctx, &account, "test-token", 60, AuthScope::Auth)
+            .await
+            .unwrap();
+        (account, token)
+    }
+
+    /// Create a user account, promote it to admin, and return a valid token for it.
+    async fn create_admin_with_token(state: &crate::http_server::AppState, name: &str) -> (crate::Account, String) {
+        let ctx = CallContext::for_account(state.system_account_id.unwrap());
+        let (account, token) = create_user_with_token(state, name).await;
+        state.account_service.grant_admin(&ctx, account.id).await.unwrap();
+        (account, token)
+    }
+
+    async fn post_set_cert(app: Router, account_name: &str, token: &str) -> axum::http::StatusCode {
+        let body = serde_json::json!({ "certificate_pem": null }).to_string();
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/v1/accounts/{account_name}/cert"))
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .body(Body::from(body))
+            .unwrap();
+        app.oneshot(req).await.unwrap().status()
+    }
+
+    #[tokio::test]
+    async fn owner_can_update_own_cert() {
+        let state = create_mock_app_state();
+        let (account, token) = create_user_with_token(&state, "certowner").await;
+        let app = build_test_router(state);
+
+        let status = post_set_cert(app, account.name.as_str(), &token).await;
+
+        assert_eq!(status, axum::http::StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn admin_can_update_cert_on_other_account() {
+        let state = create_mock_app_state();
+        let (target, _) = create_user_with_token(&state, "certtarget").await;
+        let (_, admin_token) = create_admin_with_token(&state, "certadmin").await;
+        let app = build_test_router(state);
+
+        let status = post_set_cert(app, target.name.as_str(), &admin_token).await;
+
+        assert_eq!(status, axum::http::StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn non_admin_cannot_update_cert_on_other_account() {
+        let state = create_mock_app_state();
+        let (target, _) = create_user_with_token(&state, "certvictim").await;
+        let (_, attacker_token) = create_user_with_token(&state, "certattacker").await;
+        let app = build_test_router(state);
+
+        let status = post_set_cert(app, target.name.as_str(), &attacker_token).await;
+
+        assert_eq!(status, axum::http::StatusCode::FORBIDDEN);
+    }
 }
