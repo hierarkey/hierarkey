@@ -179,7 +179,7 @@ pub(crate) async fn token(
                     details: None,
                 });
             };
-            let peer_cert = extract_peer_cert_der(&headers);
+            let peer_cert = extract_peer_cert_der(&headers, call_ctx.client_ip, &state.config.trusted_proxy_cidrs);
             provider
                 .authenticate(&state, &call_ctx, ctx, peer_cert, scope, access_ttl)
                 .await?
@@ -513,9 +513,73 @@ async fn authenticate_keysig(
 /// forward the client certificate to the upstream server. The value is expected
 /// to be standard base64-encoded DER (no line wrapping).
 ///
-/// Returns `None` when the header is absent or cannot be decoded.
-pub fn extract_peer_cert_der(headers: &HeaderMap) -> Option<Vec<u8>> {
+/// **Security:** The header is only accepted when `peer_ip` falls within one of
+/// `trusted_cidrs`. If the list is empty, or the peer is not a known proxy, the
+/// header is silently ignored to prevent an attacker from injecting an arbitrary
+/// certificate and impersonating a service account via mTLS.
+///
+/// Returns `None` when the header is absent, the peer is untrusted, or the
+/// value cannot be decoded.
+pub fn extract_peer_cert_der(
+    headers: &HeaderMap,
+    peer_ip: Option<std::net::IpAddr>,
+    trusted_cidrs: &[ipnet::IpNet],
+) -> Option<Vec<u8>> {
+    let ip = peer_ip?;
+    if trusted_cidrs.is_empty() || !trusted_cidrs.iter().any(|cidr| cidr.contains(&ip)) {
+        return None;
+    }
     let value = headers.get("x-client-cert")?;
     let b64 = value.to_str().ok()?;
     base64::engine::general_purpose::STANDARD.decode(b64.trim()).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn trusted(cidr: &str) -> Vec<ipnet::IpNet> {
+        vec![cidr.parse().unwrap()]
+    }
+
+    fn peer(ip: &str) -> Option<std::net::IpAddr> {
+        Some(ip.parse().unwrap())
+    }
+
+    fn headers_with_cert(b64: &str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert("x-client-cert", b64.parse().unwrap());
+        h
+    }
+
+    #[test]
+    fn rejects_when_no_trusted_cidrs() {
+        let h = headers_with_cert("dGVzdA==");
+        assert!(extract_peer_cert_der(&h, peer("1.2.3.4"), &[]).is_none());
+    }
+
+    #[test]
+    fn rejects_when_peer_not_in_trusted_cidr() {
+        let h = headers_with_cert("dGVzdA==");
+        assert!(extract_peer_cert_der(&h, peer("8.8.8.8"), &trusted("10.0.0.0/8")).is_none());
+    }
+
+    #[test]
+    fn rejects_when_no_peer_ip() {
+        let h = headers_with_cert("dGVzdA==");
+        assert!(extract_peer_cert_der(&h, None, &trusted("10.0.0.0/8")).is_none());
+    }
+
+    #[test]
+    fn accepts_when_peer_is_trusted() {
+        // base64("test") = "dGVzdA=="
+        let h = headers_with_cert("dGVzdA==");
+        let result = extract_peer_cert_der(&h, peer("10.0.0.5"), &trusted("10.0.0.0/8"));
+        assert_eq!(result, Some(b"test".to_vec()));
+    }
+
+    #[test]
+    fn returns_none_when_header_absent_even_for_trusted_peer() {
+        assert!(extract_peer_cert_der(&HeaderMap::new(), peer("10.0.0.5"), &trusted("10.0.0.0/8")).is_none());
+    }
 }

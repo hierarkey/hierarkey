@@ -3,6 +3,7 @@
 
 use hierarkey_core::error::validation::ValidationError;
 use hierarkey_core::{CkError, CkResult};
+use ipnet::IpNet;
 use serde::Deserialize;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -39,6 +40,17 @@ pub struct Config {
     pub cors: CorsConfig,
     #[serde(default)]
     pub security_headers: SecurityHeadersConfig,
+    /// CIDR ranges of trusted reverse proxies.
+    ///
+    /// When the real TCP peer address falls within one of these ranges, the server
+    /// will accept `X-Forwarded-For` as the authoritative client IP for rate
+    /// limiting, and will accept `X-Client-Cert` as the peer certificate for
+    /// mTLS authentication. When this list is empty (the default), both headers
+    /// are ignored regardless of the peer address.
+    ///
+    /// Example: `trusted_proxy_cidrs = ["10.0.0.0/8", "172.16.0.0/12"]`
+    #[serde(default)]
+    pub trusted_proxy_cidrs: Vec<IpNet>,
 }
 
 impl Config {

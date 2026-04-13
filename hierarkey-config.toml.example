@@ -265,6 +265,25 @@ max_age_seconds = 3600
 
 
 ###############################################
+# Trusted Reverse Proxy Configuration
+###############################################
+# CIDR ranges of trusted reverse proxies.
+#
+# When the real TCP peer address is within one of these ranges, the server
+# accepts X-Forwarded-For as the authoritative client IP for rate limiting,
+# and accepts X-Client-Cert as the peer certificate for mTLS authentication.
+#
+# Leave empty (the default) when Hierarkey is exposed directly without a
+# proxy, or when mTLS authentication is not used. Only add addresses you
+# actually control — any host in these ranges can inject arbitrary client
+# identities.
+#
+# Example:
+# trusted_proxy_cidrs = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+trusted_proxy_cidrs = []
+
+
+###############################################
 # Rate Limiting Configuration
 ###############################################
 [rate_limit]

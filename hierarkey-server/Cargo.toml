@@ -37,7 +37,7 @@ async-trait = "0.1.89"
 axum = { version = "0.8", features = ["json", "macros"] }
 governor = "0.10"
 metrics = "0.24"
-ipnet = "2"
+ipnet = { version = "2", features = ["serde"] }
 axum-server = { version = "0.8", features = ["tls-rustls"] }
 base64 = "0.22"
 blake3 = "1.8.4"
