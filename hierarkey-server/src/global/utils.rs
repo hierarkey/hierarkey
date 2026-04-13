@@ -176,9 +176,14 @@ mod tests {
         permissions.set_mode(0o600);
         std::fs::set_permissions(key_file.path(), permissions).unwrap();
 
+        // Create a temporary cert file with invalid (non-PEM) content so the
+        // file-read succeeds but RustlsConfig::from_pem fails.
+        let mut cert_file = NamedTempFile::new().unwrap();
+        cert_file.write_all(b"not a valid cert").unwrap();
+
         let server_cfg = ServerConfig {
             bind_address: "127.0.0.1:8443".to_string(),
-            cert_path: Some("/nonexistent/cert.pem".to_string()),
+            cert_path: Some(cert_file.path().to_str().unwrap().to_string()),
             key_path: Some(key_file.path().to_str().unwrap().to_string()),
             ..Default::default()
         };
@@ -187,7 +192,7 @@ mod tests {
         let app = build_router(state, &[]);
 
         let result = start_tls_server(&server_cfg, app).await;
-        // Should pass permission check but fail on loading TLS config
+        // Should pass permission check and file reads, but fail on loading TLS config
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("failed to load TLS config"));
     }
