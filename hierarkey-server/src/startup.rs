@@ -5,10 +5,10 @@ use crate::audit_context::CallContext;
 use crate::global::config::{Config, ServerMode};
 use crate::global::keys::SigningKey;
 use crate::global::row_hmac::{sign_account, sign_account_role_binding, sign_role_rule, sign_rule};
+use crate::http_server::db_nonce_store::DbNonceStore;
 use crate::http_server::federated_auth_provider::FederatedAuthProvider;
 use crate::http_server::mfa_provider::MfaProvider;
 use crate::http_server::mtls_provider::MtlsAuthProvider;
-use crate::http_server::nonce_cache::NonceCache;
 use crate::http_server::{AppState, ServerExtension, build_router, start_http_server, start_tls_server};
 use crate::manager::account::AccountId;
 use crate::manager::account::{AccountManager, SqlAccountStore};
@@ -402,9 +402,7 @@ pub async fn build_app_state(cfg: Config, extensions: &[Box<dyn ServerExtension>
         rbac_service.clone(),
     ));
 
-    // Nonce TTL is 2x the timestamp acceptance window so every valid nonce is
-    // tracked for at least as long as it could legitimately be replayed.
-    let sa_nonce_cache = Arc::new(NonceCache::new(Duration::from_secs(120)));
+    let sa_nonce_store = Arc::new(DbNonceStore::new(pool.clone()));
 
     let license_service = Arc::new(LicenseService::new());
     let audit_service = Arc::new(AuditService::new(pool.clone(), license_service.clone()));
@@ -441,7 +439,7 @@ pub async fn build_app_state(cfg: Config, extensions: &[Box<dyn ServerExtension>
         system_account_id: None,
         task_manager,
         config: cfg,
-        sa_nonce_cache,
+        sa_nonce_store,
         signing_slot,
         signing_key_manager,
     })

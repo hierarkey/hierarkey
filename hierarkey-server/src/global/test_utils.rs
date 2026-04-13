@@ -3,7 +3,7 @@
 
 use crate::global::config::Config;
 use crate::http_server::AppState;
-use crate::http_server::nonce_cache::NonceCache;
+use crate::http_server::db_nonce_store::DbNonceStore;
 use crate::manager::account::{AccountId, AccountManager, InMemoryAccountStore};
 use crate::manager::kek::{InMemoryKekStore, KekManager};
 use crate::manager::masterkey::InMemoryMasterKeyStore;
@@ -87,7 +87,7 @@ pub fn create_mock_app_state() -> AppState {
 
     let pool = PgPool::connect_lazy("postgres://localhost/test").unwrap();
 
-    let sa_nonce_cache = Arc::new(NonceCache::new(std::time::Duration::from_secs(120)));
+    let sa_nonce_store = Arc::new(DbNonceStore::new(pool.clone()));
 
     let license_service = Arc::new(LicenseService::new());
     let audit_service = Arc::new(AuditService::new(pool.clone(), license_service.clone()));
@@ -110,7 +110,7 @@ pub fn create_mock_app_state() -> AppState {
         mtls_auth_provider: None,
         task_manager,
         config: Config::default(),
-        sa_nonce_cache,
+        sa_nonce_store,
         mfa_provider: None,
         federated_providers: vec![],
         federated_identity_manager: std::sync::Arc::new(

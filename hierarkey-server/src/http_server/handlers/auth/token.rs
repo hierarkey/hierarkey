@@ -322,10 +322,17 @@ async fn authenticate_keysig(
         });
     }
 
-    // Reject replayed nonces before any DB work. The cache retains each nonce
+    // Reject replayed nonces before any DB work. The store retains each nonce
     // for 2x the timestamp acceptance window, so every legitimately valid nonce
     // is tracked until it can no longer be replayed.
-    if !state.sa_nonce_cache.try_consume(&nonce) {
+    let nonce_fresh = state.sa_nonce_store.try_consume(&nonce).await.map_err(|e| HttpError {
+        http: StatusCode::INTERNAL_SERVER_ERROR,
+        fail_code: ctx.fail_code,
+        reason: ApiErrorCode::InternalError,
+        message: format!("nonce check failed: {e}"),
+        details: None,
+    })?;
+    if !nonce_fresh {
         return Err(HttpError {
             http: StatusCode::BAD_REQUEST,
             fail_code: ctx.fail_code,

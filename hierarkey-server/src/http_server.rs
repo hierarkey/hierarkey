@@ -9,11 +9,11 @@ use crate::global::{
     HTTP_RESPONSE_BODY_TIMEOUT,
 };
 use crate::http_server::api_error::HttpError;
+use crate::http_server::db_nonce_store::DbNonceStore;
 use crate::http_server::middleware::{
     audit_ctx_middleware, auth_middleware, logging_middleware, require_auth_purpose, require_change_password_purpose,
     security_headers_middleware,
 };
-use crate::http_server::nonce_cache::NonceCache;
 use crate::manager::account::AccountId;
 use crate::manager::federated_identity::FederatedIdentityManager;
 use crate::manager::signing_key::SigningKeyManager;
@@ -48,6 +48,7 @@ use tracing::{debug, info};
 
 pub mod api_error;
 pub mod auth_user;
+pub mod db_nonce_store;
 pub mod extractors;
 pub mod federated_auth_provider;
 pub mod handlers;
@@ -102,8 +103,8 @@ pub struct AppState {
     pub pool: PgPool,
     /// Background task manager for managing long-running tasks and graceful shutdown
     pub task_manager: Arc<BackgroundTaskManager>,
-    /// Nonce cache for Ed25519 service-account authentication replay prevention
-    pub sa_nonce_cache: Arc<NonceCache>,
+    /// Database-backed nonce store for Ed25519 service-account authentication replay prevention
+    pub sa_nonce_store: Arc<DbNonceStore>,
 
     /// Per-IP rate limiter for auth endpoints — `None` when rate limiting is disabled
     pub auth_rate_limiter: Option<std::sync::Arc<governor::DefaultKeyedRateLimiter<std::net::IpAddr>>>,
