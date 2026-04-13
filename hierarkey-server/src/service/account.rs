@@ -361,6 +361,14 @@ impl AccountService {
     pub async fn disable(&self, ctx: &CallContext, account_id: AccountId, reason: Option<String>) -> CkResult<()> {
         trace!("Disabling account ID {}", account_id);
 
+        let actor_id = ctx.actor.require_account_id()?;
+        if !self.account_manager.is_admin(*actor_id).await? {
+            return Err(hierarkey_core::error::auth::AuthError::Forbidden {
+                reason: "Admin privilege required to disable accounts",
+            }
+            .into());
+        }
+
         let account = match self.account_manager.find_account_by_id(account_id).await? {
             Some(a) => a,
             None => {
@@ -378,7 +386,6 @@ impl AccountService {
             .into());
         }
 
-        let actor_id = ctx.actor.require_account_id()?;
         if *actor_id == account_id {
             return Err(hierarkey_core::error::auth::AuthError::Forbidden {
                 reason: "Cannot disable your own account",
@@ -391,6 +398,15 @@ impl AccountService {
 
     pub async fn enable(&self, ctx: &CallContext, account_id: AccountId, reason: Option<String>) -> CkResult<()> {
         trace!("Enabling account ID {}", account_id);
+
+        let actor_id = ctx.actor.require_account_id()?;
+        if !self.account_manager.is_admin(*actor_id).await? {
+            return Err(hierarkey_core::error::auth::AuthError::Forbidden {
+                reason: "Admin privilege required to enable accounts",
+            }
+            .into());
+        }
+
         self.account_manager.enable_account(ctx, account_id, reason).await
     }
 
@@ -402,6 +418,14 @@ impl AccountService {
         locked_until: Option<DateTime<Utc>>,
     ) -> CkResult<()> {
         trace!("Locking account ID {}", account_id);
+
+        let actor_id = ctx.actor.require_account_id()?;
+        if !self.account_manager.is_admin(*actor_id).await? {
+            return Err(hierarkey_core::error::auth::AuthError::Forbidden {
+                reason: "Admin privilege required to lock accounts",
+            }
+            .into());
+        }
 
         let account = match self.account_manager.find_account_by_id(account_id).await? {
             Some(a) => a,
@@ -420,7 +444,6 @@ impl AccountService {
             .into());
         }
 
-        let actor_id = ctx.actor.require_account_id()?;
         if *actor_id == account_id {
             return Err(hierarkey_core::error::auth::AuthError::Forbidden {
                 reason: "Cannot lock your own account",
@@ -435,6 +458,15 @@ impl AccountService {
 
     pub async fn unlock(&self, ctx: &CallContext, account_id: AccountId, reason: Option<String>) -> CkResult<()> {
         trace!("Unlocking account ID {}", account_id);
+
+        let actor_id = ctx.actor.require_account_id()?;
+        if !self.account_manager.is_admin(*actor_id).await? {
+            return Err(hierarkey_core::error::auth::AuthError::Forbidden {
+                reason: "Admin privilege required to unlock accounts",
+            }
+            .into());
+        }
+
         self.account_manager.unlock_account(ctx, account_id, reason).await
     }
 
@@ -1051,9 +1083,8 @@ mod tests {
     #[tokio::test]
     async fn disable_success() {
         let (svc, store) = make_svc();
-        let (actor, actor_ctx) = inject_user(&store, "actor1").await;
+        let (_, actor_ctx) = inject_admin(&store, "actor1").await;
         let (target, _) = inject_user(&store, "target1").await;
-        let _ = actor;
 
         svc.disable(&actor_ctx, target.id, None).await.unwrap();
 
@@ -1062,9 +1093,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn disable_non_admin_denied() {
+        let (svc, store) = make_svc();
+        let (_, actor_ctx) = inject_user(&store, "nonadmin_dis").await;
+        let (target, _) = inject_user(&store, "target_dis").await;
+
+        let result = svc.disable(&actor_ctx, target.id, None).await;
+        assert!(matches!(
+            result,
+            Err(CkError::Auth(hierarkey_core::error::auth::AuthError::Forbidden { .. }))
+        ));
+    }
+
+    #[tokio::test]
     async fn disable_not_found() {
         let (svc, store) = make_svc();
-        let (_, actor_ctx) = inject_user(&store, "actor2").await;
+        let (_, actor_ctx) = inject_admin(&store, "actor2").await;
         let result = svc.disable(&actor_ctx, AccountId::new(), None).await;
         assert!(matches!(result, Err(CkError::ResourceNotFound { .. })));
     }
@@ -1072,7 +1116,7 @@ mod tests {
     #[tokio::test]
     async fn disable_system_account_fails() {
         let (svc, store) = make_svc();
-        let (_, actor_ctx) = inject_user(&store, "actor3").await;
+        let (_, actor_ctx) = inject_admin(&store, "actor3").await;
         let sys_id = AccountId::new();
         inject(
             &store,
@@ -1087,7 +1131,7 @@ mod tests {
     #[tokio::test]
     async fn disable_self_fails() {
         let (svc, store) = make_svc();
-        let (user, user_ctx) = inject_user(&store, "selfuser").await;
+        let (user, user_ctx) = inject_admin(&store, "selfuser").await;
         let result = svc.disable(&user_ctx, user.id, None).await;
         assert!(result.is_err());
     }
@@ -1095,14 +1139,13 @@ mod tests {
     #[tokio::test]
     async fn enable_success() {
         let (svc, store) = make_svc();
-        let (actor, actor_ctx) = inject_user(&store, "enactor").await;
+        let (_, actor_ctx) = inject_admin(&store, "enactor").await;
         let target_id = AccountId::new();
         inject(
             &store,
             &make_account(target_id, "entarget", AccountType::User, AccountStatus::Disabled),
         )
         .await;
-        let _ = actor;
 
         svc.enable(&actor_ctx, target_id, None).await.unwrap();
 
@@ -1110,12 +1153,30 @@ mod tests {
         assert_eq!(found.status, AccountStatus::Active);
     }
 
+    #[tokio::test]
+    async fn enable_non_admin_denied() {
+        let (svc, store) = make_svc();
+        let (_, actor_ctx) = inject_user(&store, "nonadmin_en").await;
+        let target_id = AccountId::new();
+        inject(
+            &store,
+            &make_account(target_id, "entarget2", AccountType::User, AccountStatus::Disabled),
+        )
+        .await;
+
+        let result = svc.enable(&actor_ctx, target_id, None).await;
+        assert!(matches!(
+            result,
+            Err(CkError::Auth(hierarkey_core::error::auth::AuthError::Forbidden { .. }))
+        ));
+    }
+
     // ---- lock / unlock ----
 
     #[tokio::test]
     async fn lock_success() {
         let (svc, store) = make_svc();
-        let (_, actor_ctx) = inject_user(&store, "lkactor").await;
+        let (_, actor_ctx) = inject_admin(&store, "lkactor").await;
         let (target, _) = inject_user(&store, "lktarget").await;
 
         svc.lock(&actor_ctx, target.id, Some("reason".into()), None)
@@ -1127,9 +1188,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn lock_non_admin_denied() {
+        let (svc, store) = make_svc();
+        let (_, actor_ctx) = inject_user(&store, "nonadmin_lk").await;
+        let (target, _) = inject_user(&store, "lktarget2").await;
+
+        let result = svc.lock(&actor_ctx, target.id, None, None).await;
+        assert!(matches!(
+            result,
+            Err(CkError::Auth(hierarkey_core::error::auth::AuthError::Forbidden { .. }))
+        ));
+    }
+
+    #[tokio::test]
     async fn lock_not_found() {
         let (svc, store) = make_svc();
-        let (_, actor_ctx) = inject_user(&store, "lkactor2").await;
+        let (_, actor_ctx) = inject_admin(&store, "lkactor2").await;
         let result = svc.lock(&actor_ctx, AccountId::new(), None, None).await;
         assert!(matches!(result, Err(CkError::ResourceNotFound { .. })));
     }
@@ -1137,7 +1211,7 @@ mod tests {
     #[tokio::test]
     async fn lock_system_account_fails() {
         let (svc, store) = make_svc();
-        let (_, actor_ctx) = inject_user(&store, "lkactor3").await;
+        let (_, actor_ctx) = inject_admin(&store, "lkactor3").await;
         let sys_id = AccountId::new();
         inject(
             &store,
@@ -1152,7 +1226,7 @@ mod tests {
     #[tokio::test]
     async fn lock_self_fails() {
         let (svc, store) = make_svc();
-        let (user, user_ctx) = inject_user(&store, "selflock").await;
+        let (user, user_ctx) = inject_admin(&store, "selflock").await;
         let result = svc.lock(&user_ctx, user.id, None, None).await;
         assert!(result.is_err());
     }
@@ -1160,7 +1234,7 @@ mod tests {
     #[tokio::test]
     async fn unlock_success() {
         let (svc, store) = make_svc();
-        let (_, actor_ctx) = inject_user(&store, "ulactor").await;
+        let (_, actor_ctx) = inject_admin(&store, "ulactor").await;
         let target_id = AccountId::new();
         inject(
             &store,
@@ -1169,6 +1243,24 @@ mod tests {
         .await;
 
         svc.unlock(&actor_ctx, target_id, None).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn unlock_non_admin_denied() {
+        let (svc, store) = make_svc();
+        let (_, actor_ctx) = inject_user(&store, "nonadmin_ul").await;
+        let target_id = AccountId::new();
+        inject(
+            &store,
+            &make_account(target_id, "ultarget2", AccountType::User, AccountStatus::Locked),
+        )
+        .await;
+
+        let result = svc.unlock(&actor_ctx, target_id, None).await;
+        assert!(matches!(
+            result,
+            Err(CkError::Auth(hierarkey_core::error::auth::AuthError::Forbidden { .. }))
+        ));
     }
 
     // ---- grant_admin ----
