@@ -48,14 +48,13 @@ pub(crate) async fn login(
     }
     let account = auth_result.ctx(ctx)?;
 
+    // Credentials verified — record this stage before branching into token issuance.
+    // AUTH_LOGIN_SUCCESS is emitted below only after a token is actually created.
     state
         .audit_service
         .log(
-            AuditEvent::from_ctx(&call_ctx, event_type::AUTH_LOGIN_SUCCESS, AuditOutcome::Success).with_actor(
-                account.id.0,
-                "account",
-                account.name.as_str(),
-            ),
+            AuditEvent::from_ctx(&call_ctx, event_type::AUTH_LOGIN_CREDENTIALS_OK, AuditOutcome::Success)
+                .with_actor(account.id.0, "account", account.name.as_str()),
         )
         .await;
 
@@ -65,6 +64,16 @@ pub(crate) async fn login(
             .create_pat(&call_ctx, &account, "Change password token", 10, AuthScope::ChangePassword)
             .await
             .ctx(ctx)?;
+
+        state
+            .audit_service
+            .log(
+                AuditEvent::from_ctx(&call_ctx, event_type::AUTH_LOGIN_SUCCESS, AuditOutcome::Success)
+                    .with_actor(account.id.0, "account", account.name.as_str())
+                    .with_metadata(serde_json::json!({"scope": "change_password"})),
+            )
+            .await;
+
         let data = AuthResponse {
             account_id: account.id,
             account_short_id: account.short_id.to_string(),
@@ -98,6 +107,16 @@ pub(crate) async fn login(
             }
             Some(provider) => {
                 let challenge = provider.begin_challenge(&state, &call_ctx, &account).await?;
+
+                state
+                    .audit_service
+                    .log(
+                        AuditEvent::from_ctx(&call_ctx, event_type::AUTH_LOGIN_SUCCESS, AuditOutcome::Success)
+                            .with_actor(account.id.0, "account", account.name.as_str())
+                            .with_metadata(serde_json::json!({"scope": "mfa_challenge"})),
+                    )
+                    .await;
+
                 let data = AuthResponse {
                     account_id: account.id,
                     account_short_id: account.short_id.to_string(),
@@ -130,6 +149,15 @@ pub(crate) async fn login(
         .create_pat(&call_ctx, &account, "Login refresh token", refresh_ttl, AuthScope::Refresh)
         .await
         .ctx(ctx)?;
+
+    state
+        .audit_service
+        .log(
+            AuditEvent::from_ctx(&call_ctx, event_type::AUTH_LOGIN_SUCCESS, AuditOutcome::Success)
+                .with_actor(account.id.0, "account", account.name.as_str())
+                .with_metadata(serde_json::json!({"scope": "auth"})),
+        )
+        .await;
 
     let data = AuthResponse {
         account_id: account.id,
