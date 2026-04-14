@@ -44,6 +44,37 @@ fn extract_client_ip(headers: &HeaderMap, peer_ip: Option<IpAddr>, trusted_cidrs
     peer
 }
 
+/// Rate-limit middleware for auth endpoints.
+///
+/// When `state.auth_rate_limiter` is `Some`, checks the per-IP token bucket and
+/// returns `429 Too Many Requests` if the bucket is exhausted.
+pub async fn auth_rate_limit_middleware(State(state): State<AppState>, request: Request<Body>, next: Next) -> Response {
+    if let Some(ref limiter) = state.auth_rate_limiter {
+        let peer_addr = request
+            .extensions()
+            .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+            .map(|c| c.0.ip());
+        let ip = extract_client_ip(request.headers(), peer_addr, &state.config.trusted_proxy_cidrs);
+
+        if limiter.check_key(&ip).is_err() {
+            metrics::counter!("hierarkey_rate_limit_exceeded_total", "endpoint" => "auth").increment(1);
+            let message = "Too many requests, please try again later".to_string();
+            let status = ApiStatus::new(ApiCode::RateLimited, message.clone());
+            let body = ApiResponse::<()> {
+                status,
+                error: Some(ApiErrorBody {
+                    code: ApiErrorCode::RateLimited,
+                    message,
+                    details: None,
+                }),
+                data: None,
+            };
+            return (StatusCode::TOO_MANY_REQUESTS, Json(body)).into_response();
+        }
+    }
+    next.run(request).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,35 +142,4 @@ mod tests {
         let ip = extract_client_ip(&xff("1.2.3.4"), None, &[]);
         assert_eq!(ip, IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
     }
-}
-
-/// Rate-limit middleware for auth endpoints.
-///
-/// When `state.auth_rate_limiter` is `Some`, checks the per-IP token bucket and
-/// returns `429 Too Many Requests` if the bucket is exhausted.
-pub async fn auth_rate_limit_middleware(State(state): State<AppState>, request: Request<Body>, next: Next) -> Response {
-    if let Some(ref limiter) = state.auth_rate_limiter {
-        let peer_addr = request
-            .extensions()
-            .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
-            .map(|c| c.0.ip());
-        let ip = extract_client_ip(request.headers(), peer_addr, &state.config.trusted_proxy_cidrs);
-
-        if limiter.check_key(&ip).is_err() {
-            metrics::counter!("hierarkey_rate_limit_exceeded_total", "endpoint" => "auth").increment(1);
-            let message = "Too many requests, please try again later".to_string();
-            let status = ApiStatus::new(ApiCode::RateLimited, message.clone());
-            let body = ApiResponse::<()> {
-                status,
-                error: Some(ApiErrorBody {
-                    code: ApiErrorCode::RateLimited,
-                    message,
-                    details: None,
-                }),
-                data: None,
-            };
-            return (StatusCode::TOO_MANY_REQUESTS, Json(body)).into_response();
-        }
-    }
-    next.run(request).await
 }

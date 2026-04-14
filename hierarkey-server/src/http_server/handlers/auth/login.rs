@@ -53,8 +53,11 @@ pub(crate) async fn login(
     state
         .audit_service
         .log(
-            AuditEvent::from_ctx(&call_ctx, event_type::AUTH_LOGIN_CREDENTIALS_OK, AuditOutcome::Success)
-                .with_actor(account.id.0, "account", account.name.as_str()),
+            AuditEvent::from_ctx(&call_ctx, event_type::AUTH_LOGIN_CREDENTIALS_OK, AuditOutcome::Success).with_actor(
+                account.id.0,
+                "account",
+                account.name.as_str(),
+            ),
         )
         .await;
 
