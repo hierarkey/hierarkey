@@ -22,27 +22,11 @@ pub struct CallContext {
     pub trace_id: TraceId,
     /// How the action was initiated
     pub entrypoint: Entrypoint,
-    /// Origin of the action
-    pub origin: Origin,
     /// Client IP address of the incoming HTTP request (None for background jobs / CLI).
     pub client_ip: Option<IpAddr>,
 }
 
 impl CallContext {
-    pub fn api(actor: AccountId, origin: Origin) -> Self {
-        let request_id = RequestId::new();
-        let trace_id = TraceId::new();
-        Self {
-            actor: Actor::Account(actor),
-            actor_name: None,
-            request_id,
-            trace_id,
-            entrypoint: Entrypoint::Api,
-            origin,
-            client_ip: None,
-        }
-    }
-
     pub fn job() -> Self {
         let request_id = RequestId::new();
         let trace_id = TraceId::new();
@@ -52,7 +36,6 @@ impl CallContext {
             request_id,
             trace_id,
             entrypoint: Entrypoint::Job,
-            origin: Origin::System,
             client_ip: None,
         }
     }
@@ -65,7 +48,6 @@ impl CallContext {
             request_id: RequestId::new(),
             trace_id: TraceId::new(),
             entrypoint: Entrypoint::Job,
-            origin: Origin::System,
             client_ip: None,
         }
     }
@@ -78,7 +60,6 @@ impl CallContext {
             request_id: RequestId::new(),
             trace_id: TraceId::new(),
             entrypoint: Entrypoint::Api,
-            origin: Origin::Unknown,
             client_ip: None,
         }
     }
@@ -124,17 +105,6 @@ impl Actor {
             .into()),
         }
     }
-}
-
-/// Specifies the origin of an action, which can provide additional context for auditing and logging.
-#[derive(Clone, Debug)]
-pub enum Origin {
-    /// Action initiated via the CLI (passed as the user header X-Hierarkey-Origin)
-    Named(String),
-    /// Action initiated by the system
-    System,
-    /// Unknown origin
-    Unknown,
 }
 
 #[derive(Clone, Debug)]
