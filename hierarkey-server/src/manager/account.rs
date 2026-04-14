@@ -1376,14 +1376,25 @@ pub struct AccountManager {
     /// Populated after every successful integrity check; evicted on every write.
     /// This avoids repeated DB round-trips and HMAC re-checks for hot read paths.
     cache: RwLock<HashMap<AccountId, Account>>,
+    /// Minimum password length enforced at account creation and password change.
+    min_password_length: usize,
 }
 
 impl AccountManager {
     pub fn new(store: Arc<dyn AccountStore>, signing_slot: Arc<SigningKeySlot>) -> Self {
+        Self::with_min_password_length(store, signing_slot, MIN_PASSWORD_LENGTH)
+    }
+
+    pub fn with_min_password_length(
+        store: Arc<dyn AccountStore>,
+        signing_slot: Arc<SigningKeySlot>,
+        min_password_length: usize,
+    ) -> Self {
         Self {
             store,
             signing_slot,
             cache: RwLock::new(HashMap::new()),
+            min_password_length: min_password_length.max(MIN_PASSWORD_LENGTH),
         }
     }
 
@@ -1603,10 +1614,10 @@ impl AccountManager {
     }
 
     fn validate_password(&self, password: &Password) -> CkResult<()> {
-        if password.to_string().len() < MIN_PASSWORD_LENGTH {
+        if password.len() < self.min_password_length {
             return Err(ValidationError::TooShort {
                 field: "password",
-                min: MIN_PASSWORD_LENGTH,
+                min: self.min_password_length,
             }
             .into());
         }

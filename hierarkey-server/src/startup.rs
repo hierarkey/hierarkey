@@ -324,7 +324,11 @@ pub async fn build_app_state(cfg: Config, extensions: &[Box<dyn ServerExtension>
 
     let store = Arc::new(SqlAccountStore::new(pool.clone())?);
     let signing_slot = Arc::new(crate::service::signing_key_slot::SigningKeySlot::new());
-    let account_manager = Arc::new(AccountManager::new(store, signing_slot.clone()));
+    let account_manager = Arc::new(AccountManager::with_min_password_length(
+        store,
+        signing_slot.clone(),
+        cfg.auth.min_password_length,
+    ));
 
     let store = Arc::new(SqlNamespaceStore::new(pool.clone()));
     let ns_manager = Arc::new(NamespaceManager::new(store));
