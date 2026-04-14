@@ -213,7 +213,10 @@ pub struct AccountDto {
     pub mfa_enabled: bool,
 
     pub last_login_at: Option<DateTime<Utc>>,
-    pub failed_login_attempts: i32,
+    /// Only populated for admin callers; `None` for account owners and list results.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[sqlx(skip)]
+    pub failed_login_attempts: Option<i32>,
     pub password_changed_at: Option<DateTime<Utc>>,
     pub must_change_password: bool,
 
@@ -254,7 +257,7 @@ impl From<&Account> for AccountDto {
             mfa_enabled: u.mfa_enabled,
 
             last_login_at: u.last_login_at,
-            failed_login_attempts: u.failed_login_attempts,
+            failed_login_attempts: None,
             password_changed_at: u.password_changed_at,
             must_change_password: u.must_change_password,
 
