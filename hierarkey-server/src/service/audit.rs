@@ -24,6 +24,9 @@ use uuid::Uuid;
 pub mod event_type {
     // Authentication
     pub const AUTH_LOGIN_SUCCESS: &str = "auth.login_success";
+    /// Credentials (password/passphrase) verified OK but token not yet issued.
+    /// Followed by AUTH_LOGIN_SUCCESS once the token is actually created.
+    pub const AUTH_LOGIN_CREDENTIALS_OK: &str = "auth.login_credentials_ok";
     pub const AUTH_LOGIN_FAILURE: &str = "auth.login_failure";
     pub const AUTH_LOGOUT: &str = "auth.logout";
     pub const AUTH_MFA_VERIFY_SUCCESS: &str = "auth.mfa_verify_success";

@@ -49,26 +49,33 @@ pub(crate) async fn describe(
     };
 
     // Users may describe their own account; admins may describe any account.
-    if !call_ctx.actor.is_system() {
+    let caller_is_admin = if call_ctx.actor.is_system() {
+        true
+    } else {
         let actor_id = call_ctx
             .actor
             .require_account_id()
             .map_err(|e| HttpError::forbidden(ctx, e.to_string()))?;
-        if *actor_id != account.id
-            && !state
-                .account_service
-                .is_admin(&call_ctx, *actor_id)
-                .await
-                .map_err(|e| HttpError::forbidden(ctx, e.to_string()))?
-        {
+        let is_admin = state
+            .account_service
+            .is_admin(&call_ctx, *actor_id)
+            .await
+            .map_err(|e| HttpError::forbidden(ctx, e.to_string()))?;
+        if *actor_id != account.id && !is_admin {
             return Err(HttpError::forbidden(
                 ctx,
                 "Admin privilege required to describe another account",
             ));
         }
-    }
+        is_admin
+    };
 
     let mut data = AccountDto::from(&account);
+    // Expose the failed-login counter only to admins; owners do not need it and
+    // it could reveal whether their account is being actively targeted.
+    if caller_is_admin {
+        data.failed_login_attempts = Some(account.failed_login_attempts);
+    }
     data.created_by = match account.created_by {
         Some(id) => resolve_ref(&state, &call_ctx, id).await,
         None => None,

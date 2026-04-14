@@ -82,6 +82,7 @@ default_fn!(default_refresh_token, u64, 86400);
 default_fn!(default_max_failed_login_attempts, u32, 10);
 default_fn!(default_lockout_duration_minutes, u64, 15);
 default_fn!(default_auth_rpm, u32, 20);
+default_fn!(default_min_password_length, usize, 12);
 default_fn!(default_cors_max_age, u64, 3600);
 default_fn!(default_auth_burst, u32, 5);
 default_fn!(default_hsts_max_age, u64, 31_536_000); // 1 year
@@ -157,6 +158,11 @@ pub struct AuthConfig {
     /// How long (in minutes) the account stays locked after hitting the threshold.
     #[serde(default = "default_lockout_duration_minutes")]
     pub lockout_duration_minutes: u64,
+    /// Minimum number of characters required for user account passwords.
+    /// Applies to both account creation and password changes. Must be at least 8.
+    /// Defaults to 12.
+    #[serde(default = "default_min_password_length")]
+    pub min_password_length: usize,
     /// Federated authentication providers (`[[auth.federated]]` array of tables).
     #[serde(default)]
     pub federated: Vec<FederatedProviderConfig>,

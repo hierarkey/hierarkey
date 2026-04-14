@@ -216,6 +216,10 @@ refresh_token_ttl_seconds = 604800  # 7 days
 max_failed_login_attempts = 10
 lockout_duration_minutes = 15
 
+# Minimum password length enforced on account creation and password changes.
+# The absolute floor is 8; values below 8 are silently raised to 8.
+min_password_length = 12
+
 ###############################################
 # Security Headers Configuration
 ###############################################

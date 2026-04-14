@@ -135,7 +135,9 @@ pub fn print_account_describe(account: &AccountDto) {
         fmt_opt_date(account.password_changed_at, "-")
     );
     println!("  {:<20} {}", "Last login at:", fmt_opt_date(account.last_login_at, "Never"));
-    println!("  {:<20} {}", "Failed logins:", account.failed_login_attempts);
+    if let Some(failed) = account.failed_login_attempts {
+        println!("  {:<20} {}", "Failed logins:", failed);
+    }
     if let Some(locked_until) = account.locked_until {
         println!("  {:<20} {}", "Locked until:", fmt_date(locked_until));
     }
