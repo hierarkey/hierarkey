@@ -4,7 +4,7 @@
 use base64::Engine as _;
 use ed25519_dalek::{
     Signature, Signer, SigningKey, VerifyingKey,
-    pkcs8::{DecodePrivateKey, DecodePublicKey, EncodePublicKey, spki::der::pem::LineEnding},
+    pkcs8::{DecodePrivateKey, DecodePublicKey, EncodePrivateKey, EncodePublicKey, spki::der::pem::LineEnding},
 };
 use rand_core::{CryptoRng, Rng};
 use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -87,44 +87,10 @@ impl Ed25519PrivateKey {
         Ed25519PublicKey(self.0.verifying_key())
     }
 
-    /// Export private key as PKCS#8 v1 PEM (no public key appendix).
-    ///
-    /// ed25519_dalek's `to_pkcs8_pem` emits PKCS#8 v2 which embeds the
-    /// public key. Several consumers (Python's `cryptography` library,
-    /// some OpenSSL builds) reject v2 with "extra data". We manually
-    /// construct the 48-byte v1 DER instead.
+    /// Export private key as PKCS#8 PEM.
     pub fn to_pem(&self) -> Result<String, Ed25519CryptoError> {
-        let seed = self.to_seed_bytes();
-
-        // PKCS#8 v1 DER for Ed25519 — exactly 48 bytes:
-        //   SEQUENCE (46 bytes) {
-        //     INTEGER 0                       -- version = v1
-        //     SEQUENCE { OID 1.3.101.112 }    -- AlgorithmIdentifier (Ed25519)
-        //     OCTET STRING {
-        //       OCTET STRING (32 bytes)        -- private key seed
-        //     }
-        //   }
-        let mut der = vec![
-            0x30, 0x2e, // SEQUENCE, 46 bytes
-            0x02, 0x01, 0x00, // INTEGER 0 (v1)
-            0x30, 0x05, // SEQUENCE, 5 bytes
-            0x06, 0x03, 0x2b, 0x65, 0x70, // OID 1.3.101.112
-            0x04, 0x22, // OCTET STRING, 34 bytes
-            0x04, 0x20, // OCTET STRING, 32 bytes (seed)
-        ];
-        der.extend_from_slice(&seed);
-
-        let b64 = base64::engine::general_purpose::STANDARD.encode(&der);
-        let mut pem = String::from("-----BEGIN PRIVATE KEY-----\n");
-        let mut i = 0;
-        while i < b64.len() {
-            let end = (i + 64).min(b64.len());
-            pem.push_str(&b64[i..end]);
-            pem.push('\n');
-            i = end;
-        }
-        pem.push_str("-----END PRIVATE KEY-----\n");
-        Ok(pem)
+        let pem = self.0.to_pkcs8_pem(LineEnding::LF)?;
+        Ok(pem.to_string())
     }
 
     /// Import private key from PKCS#8 PEM
