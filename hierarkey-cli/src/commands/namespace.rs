@@ -180,6 +180,10 @@ pub struct NamespaceSearchArgs {
     #[arg(short = 'q', long)]
     pub query: Option<String>,
 
+    /// Filter by status: Active, Disabled, or Deleted (repeatable)
+    #[arg(short = 's', long = "status")]
+    pub status: Vec<String>,
+
     /// Limit the number of results
     #[arg(short = 'l', long)]
     pub limit: Option<usize>,

@@ -199,7 +199,7 @@ pub fn build_router(state: AppState, extensions: &[Box<dyn ServerExtension>]) ->
 
     let namespaces_router = Router::new()
         .route("/", post(handlers::namespace::create))
-        .route("/search", get(handlers::namespace::search))
+        .route("/search", post(handlers::namespace::search))
         .route("/id/{id}", get(handlers::namespace::describe_by_id))
         .route(
             "/{ns}",
