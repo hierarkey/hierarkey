@@ -1201,3 +1201,268 @@ def test_service_account_login_with_ed25519():
             os.unlink(key_path)
         except FileNotFoundError:
             pass
+
+
+# ===========================================================================
+# 14. update command
+# ===========================================================================
+
+def test_update_email():
+    """update --email sets the email on an account."""
+    account_create_user("upd_u1", activate=True)
+
+    result = hkey.run(
+        "account", "update",
+        "--name", "upd_u1",
+        "--email", "updated@example.com",
+    )
+    assert result.returncode == 0
+    assert "updated successfully" in result.stdout
+
+    data = account_describe("upd_u1")
+    assert data["email"] == "updated@example.com"
+
+
+def test_update_full_name():
+    """update --full-name sets the display name."""
+    account_create_user("upd_u2", activate=True)
+
+    result = hkey.run(
+        "account", "update",
+        "--name", "upd_u2",
+        "--full-name", "Updated User Two",
+    )
+    assert result.returncode == 0
+
+    data = account_describe("upd_u2")
+    assert data["full_name"] == "Updated User Two"
+
+
+def test_update_description():
+    """update --description sets the metadata description."""
+    account_create_user("upd_u3", activate=True)
+
+    result = hkey.run(
+        "account", "update",
+        "--name", "upd_u3",
+        "--description", "A freshly updated description",
+    )
+    assert result.returncode == 0
+
+    data = account_describe("upd_u3")
+    assert data["metadata"]["description"] == "A freshly updated description"
+
+
+def test_update_add_label():
+    """update --label adds a key=value label to the account metadata."""
+    account_create_user("upd_u4", activate=True)
+
+    result = hkey.run(
+        "account", "update",
+        "--name", "upd_u4",
+        "--label", "env=staging",
+        "--label", "team=ops",
+    )
+    assert result.returncode == 0
+
+    data = account_describe("upd_u4")
+    assert data["metadata"]["labels"]["env"] == "staging"
+    assert data["metadata"]["labels"]["team"] == "ops"
+
+
+def test_update_remove_label():
+    """update --remove-label removes an existing label."""
+    account_create_user(
+        "upd_u5", activate=True,
+        label="env=staging",
+    )
+
+    # Confirm label exists first
+    data = account_describe("upd_u5")
+    assert data["metadata"]["labels"].get("env") == "staging"
+
+    result = hkey.run(
+        "account", "update",
+        "--name", "upd_u5",
+        "--remove-label", "env",
+    )
+    assert result.returncode == 0
+
+    data = account_describe("upd_u5")
+    assert "env" not in data["metadata"].get("labels", {})
+
+
+def test_update_merges_metadata():
+    """Adding a label via update does not clear the existing description."""
+    account_create_user(
+        "upd_u6", activate=True,
+        description="Keep this description",
+    )
+
+    result = hkey.run(
+        "account", "update",
+        "--name", "upd_u6",
+        "--label", "added=yes",
+    )
+    assert result.returncode == 0
+
+    data = account_describe("upd_u6")
+    assert data["metadata"]["description"] == "Keep this description"
+    assert data["metadata"]["labels"]["added"] == "yes"
+
+
+def test_update_clear_email():
+    """update --clear-email removes the email from an account."""
+    account_create_user("upd_u7", activate=True, email="remove@example.com")
+
+    result = hkey.run(
+        "account", "update",
+        "--name", "upd_u7",
+        "--clear-email",
+    )
+    assert result.returncode == 0
+
+    data = account_describe("upd_u7")
+    assert not data.get("email")
+
+
+def test_update_clear_description():
+    """update --clear-description removes the metadata description."""
+    account_create_user("upd_u8", activate=True, description="To be cleared")
+
+    result = hkey.run(
+        "account", "update",
+        "--name", "upd_u8",
+        "--clear-description",
+    )
+    assert result.returncode == 0
+
+    data = account_describe("upd_u8")
+    assert not data["metadata"].get("description")
+
+
+def test_update_multiple_fields_at_once():
+    """update can set email, full_name, description, and labels in one call."""
+    account_create_user("upd_u9", activate=True)
+
+    result = hkey.run(
+        "account", "update",
+        "--name", "upd_u9",
+        "--email", "multi@example.com",
+        "--full-name", "Multi Update",
+        "--description", "Multi-field update",
+        "--label", "env=prod",
+    )
+    assert result.returncode == 0
+
+    data = account_describe("upd_u9")
+    assert data["email"] == "multi@example.com"
+    assert data["full_name"] == "Multi Update"
+    assert data["metadata"]["description"] == "Multi-field update"
+    assert data["metadata"]["labels"]["env"] == "prod"
+
+
+def test_update_no_changes_fails():
+    """update with no change flags is rejected before reaching the server."""
+    account_create_user("upd_u10", activate=True)
+
+    result = hkey.run("account", "update", "--name", "upd_u10")
+    assert result.returncode != 0
+    assert "No changes specified" in result.stderr
+
+
+def test_update_nonexistent_account_fails():
+    """update on a non-existent account returns an error."""
+    result = hkey.run(
+        "account", "update",
+        "--name", "zzz_no_such_upd_xyz",
+        "--email", "ghost@example.com",
+    )
+    assert result.returncode == 12
+
+
+def test_update_json_output():
+    """update --json returns the updated account as JSON."""
+    account_create_user("upd_u11", activate=True)
+
+    result = hkey.run(
+        "account", "update",
+        "--name", "upd_u11",
+        "--email", "json_out@example.com",
+        "--json",
+    )
+    assert result.returncode == 0
+    data = json.loads(result.stdout)
+    assert data["email"] == "json_out@example.com"
+    assert data["account_name"] == "upd_u11"
+
+
+# ===========================================================================
+# 15. delete command
+# ===========================================================================
+
+def test_delete_removes_account_from_list():
+    """delete removes the account so it no longer appears in account list."""
+    account_create_user("del_u1", activate=True)
+
+    result = hkey.run("account", "delete", "--name", "del_u1")
+    assert result.returncode == 0
+    assert "deleted successfully" in result.stdout
+
+    result = hkey.run("account", "list", "--all", "--json")
+    data = json.loads(result.stdout)
+    names = {e["account_name"] for e in data["entries"]}
+    assert "del_u1" not in names
+
+
+def test_delete_account_cannot_log_in():
+    """Deleted account is rejected at the login endpoint."""
+    account_create_user("del_u2", activate=True)
+    hkey.run("account", "delete", "--name", "del_u2")
+
+    result = hkey.run_unauth(
+        "auth", "login",
+        "--name", "del_u2",
+        "--insecure-password", "testpassword1234",
+    )
+    assert result.returncode != 0
+
+
+def test_delete_by_id():
+    """delete works when targeting an account by its short ID."""
+    account_create_user("del_u3", activate=True)
+    data = account_describe("del_u3")
+    short_id = data["id"]
+    assert short_id.startswith("acc_")
+
+    result = hkey.run("account", "delete", "--id", short_id)
+    assert result.returncode == 0
+
+    result = hkey.run("account", "list", "--all", "--json")
+    names = {e["account_name"] for e in json.loads(result.stdout)["entries"]}
+    assert "del_u3" not in names
+
+
+def test_delete_nonexistent_account_fails():
+    """delete on a non-existent account returns an error."""
+    result = hkey.run("account", "delete", "--name", "zzz_no_such_del_xyz")
+    assert result.returncode == 12
+
+
+def test_delete_cannot_delete_system_accounts():
+    """System accounts ($system, $bootstrap, $recovery) cannot be deleted."""
+    for sys_account in ("$system", "$bootstrap", "$recovery"):
+        result = hkey.run("account", "delete", "--name", sys_account)
+        assert result.returncode == 12, (
+            f"Expected failure deleting system account '{sys_account}'"
+        )
+
+
+def test_delete_json_output():
+    """delete --json returns a JSON success response."""
+    account_create_user("del_u4", activate=True)
+
+    result = hkey.run("account", "delete", "--name", "del_u4", "--json")
+    assert result.returncode == 0
+    data = json.loads(result.stdout)
+    assert data["status"]["outcome"] == "success"
