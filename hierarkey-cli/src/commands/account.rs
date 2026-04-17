@@ -32,6 +32,7 @@ impl AccountSelector {
 
 pub mod change_password;
 pub mod create;
+pub mod delete;
 pub mod demote;
 pub mod describe;
 pub mod disable;
@@ -83,6 +84,8 @@ pub enum AccountCommand {
     UnlinkFederatedIdentity(AccountUnlinkFederatedIdentityArgs),
     /// Update account profile (email, full name, description, labels)
     Update(AccountUpdateArgs),
+    /// Delete an account permanently
+    Delete(AccountDeleteArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -521,6 +524,12 @@ pub struct ServiceEd25519Args {
     /// Print private key once (discouraged; useful for CI bootstrap)
     #[arg(long, help_heading = "Service ed25519 options")]
     pub print_private_key_once: bool,
+}
+
+#[derive(Parser, Debug)]
+pub struct AccountDeleteArgs {
+    #[command(flatten)]
+    pub account: AccountSelector,
 }
 
 #[derive(Parser, Debug)]
