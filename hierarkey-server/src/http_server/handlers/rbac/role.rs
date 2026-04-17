@@ -3,12 +3,14 @@
 
 pub mod add;
 pub mod create;
+pub mod delete;
 pub mod describe;
 pub mod search;
 pub mod update;
 
 pub use add::add;
 pub use create::create;
+pub use delete::delete;
 pub use describe::describe;
 pub use search::search;
 pub use update::update;

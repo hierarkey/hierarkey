@@ -271,7 +271,9 @@ pub fn build_router(state: AppState, extensions: &[Box<dyn ServerExtension>]) ->
         .route("/role/search", post(handlers::rbac::role::search))
         .route(
             "/role/{name}",
-            get(handlers::rbac::role::describe).patch(handlers::rbac::role::update),
+            get(handlers::rbac::role::describe)
+                .patch(handlers::rbac::role::update)
+                .delete(handlers::rbac::role::delete),
         )
         .route("/role/{name}/rules", post(handlers::rbac::role::add))
         .route("/rule", post(handlers::rbac::rule::create))
