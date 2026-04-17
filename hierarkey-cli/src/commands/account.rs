@@ -42,6 +42,7 @@ pub mod lock;
 pub mod promote;
 pub mod set_cert;
 pub mod unlock;
+pub mod update;
 
 #[derive(Subcommand)]
 pub enum AccountCommand {
@@ -80,6 +81,8 @@ pub enum AccountCommand {
     /// Remove the federated identity link from a service account
     #[command(name = "unlink-federated-identity")]
     UnlinkFederatedIdentity(AccountUnlinkFederatedIdentityArgs),
+    /// Update account profile (email, full name, description, labels)
+    Update(AccountUpdateArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -518,6 +521,44 @@ pub struct ServiceEd25519Args {
     /// Print private key once (discouraged; useful for CI bootstrap)
     #[arg(long, help_heading = "Service ed25519 options")]
     pub print_private_key_once: bool,
+}
+
+#[derive(Parser, Debug)]
+pub struct AccountUpdateArgs {
+    #[command(flatten)]
+    pub account: AccountSelector,
+
+    /// Email address for the account
+    #[arg(long, conflicts_with = "clear_email")]
+    pub email: Option<String>,
+
+    /// Clear the email address
+    #[arg(long, conflicts_with = "email")]
+    pub clear_email: bool,
+
+    /// Full name for the account
+    #[arg(long, conflicts_with = "clear_full_name")]
+    pub full_name: Option<String>,
+
+    /// Clear the full name
+    #[arg(long, conflicts_with = "full_name")]
+    pub clear_full_name: bool,
+
+    /// Description in account metadata
+    #[arg(long, conflicts_with = "clear_description")]
+    pub description: Option<String>,
+
+    /// Clear the description
+    #[arg(long, conflicts_with = "description")]
+    pub clear_description: bool,
+
+    /// Add or update a label in key=value form (repeatable)
+    #[arg(long = "label", value_name = "KEY=VALUE", action = clap::ArgAction::Append)]
+    pub label: Vec<String>,
+
+    /// Remove a label by key (repeatable)
+    #[arg(long = "remove-label", value_name = "KEY", action = clap::ArgAction::Append)]
+    pub remove_label: Vec<String>,
 }
 
 #[derive(Parser, Debug)]
