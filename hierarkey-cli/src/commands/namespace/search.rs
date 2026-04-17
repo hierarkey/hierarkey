@@ -8,28 +8,31 @@ use crate::error::CliResult;
 use crate::http::ApiClient;
 use crate::utils::formatting::{clip, fmt_age, fmt_labels};
 use hierarkey_server::http_server::handlers::namespace_response::NamespaceSearchResponse;
-use std::collections::HashMap;
+use serde_json::json;
 use tabled::Table;
 use tabled::settings::Style;
 
 pub fn namespace_search(client: &ApiClient, cli_args: &CliArgs, args: &NamespaceSearchArgs) -> CliResult<()> {
     let token = cli_args.require_token()?;
 
-    let mut q: HashMap<&str, String> = HashMap::new();
-    if let Some(query) = &args.query {
-        q.insert("q", query.clone());
+    let mut body = json!({});
+    if let Some(q) = &args.query {
+        body["q"] = json!(q);
     }
     if let Some(limit) = args.limit {
-        q.insert("limit", limit.to_string());
+        body["limit"] = json!(limit);
     }
     if let Some(offset) = args.offset {
-        q.insert("offset", offset.to_string());
+        body["offset"] = json!(offset);
+    }
+    if !args.status.is_empty() {
+        body["status"] = json!(args.status);
     }
 
     let resp = client
-        .get("/v1/namespaces/search")
+        .post("/v1/namespaces/search")
         .bearer_auth(token)
-        .query(&q)
+        .json(&body)
         .send()?;
     let data: NamespaceSearchResponse = client.handle_response(resp)?;
 

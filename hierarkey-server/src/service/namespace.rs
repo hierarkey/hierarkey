@@ -15,7 +15,6 @@ use async_trait::async_trait;
 use hierarkey_core::resources::NamespaceString;
 use hierarkey_core::{CkError, CkResult, Metadata};
 use serde::Deserialize;
-use std::str::FromStr;
 use std::sync::Arc;
 use tracing::trace;
 
@@ -30,39 +29,13 @@ pub enum Activity {
     Deleted,
 }
 
-fn deserialize_comma_separated<'de, D>(deserializer: D) -> Result<Vec<ResourceStatus>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let s: Option<String> = Option::deserialize(deserializer)?;
-    let Some(s) = s else {
-        return Ok(vec![]);
-    };
-
-    let s = s.trim();
-    if s.is_empty() {
-        return Ok(vec![]);
-    }
-
-    s.split(',')
-        .map(str::trim)
-        .filter(|x| !x.is_empty())
-        .map(|x| ResourceStatus::from_str(x).map_err(serde::de::Error::custom))
-        .collect()
-}
-
 #[derive(Debug, Deserialize)]
 pub struct NamespaceSearchQuery {
     pub q: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_comma_separated")]
+    #[serde(default)]
     pub status: Vec<ResourceStatus>,
-    #[serde(default = "default_limit")]
     pub limit: Option<usize>,
     pub offset: Option<usize>,
-}
-
-fn default_limit() -> Option<usize> {
-    Some(DEFAULT_LIMIT_VALUE)
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -341,7 +314,6 @@ mod tests {
     use crate::manager::namespace::{InMemoryNamespaceStore, NamespaceManager};
     use crate::manager::rbac::InMemoryRbacStore;
     use crate::service::rbac::RbacService;
-    use serde::Deserialize;
 
     // ---- Mock KekEncryptable ----
 
@@ -913,40 +885,27 @@ mod tests {
         assert!(assignments[0].is_active);
     }
 
-    fn parse_status(json_val: &str) -> Vec<ResourceStatus> {
-        #[derive(Deserialize)]
-        struct Wrap {
-            #[serde(default, deserialize_with = "deserialize_comma_separated")]
-            status: Vec<ResourceStatus>,
-        }
-        let w: Wrap = serde_json::from_str(&format!(r#"{{"status":{json_val}}}"#)).unwrap();
-        w.status
+    fn parse_query(json: &str) -> NamespaceSearchQuery {
+        serde_json::from_str(json).unwrap()
     }
 
     #[test]
-    fn default_limit_returns_some() {
-        assert_eq!(default_limit(), Some(DEFAULT_LIMIT_VALUE));
+    fn namespace_search_query_status_defaults_to_empty() {
+        let q = parse_query(r#"{}"#);
+        assert!(q.status.is_empty());
     }
 
     #[test]
-    fn deserialize_comma_separated_null_gives_empty() {
-        assert!(parse_status("null").is_empty());
+    fn namespace_search_query_status_single_value() {
+        let q = parse_query(r#"{"status":["Active"]}"#);
+        assert_eq!(q.status, vec![ResourceStatus::Active]);
     }
 
     #[test]
-    fn deserialize_comma_separated_empty_string_gives_empty() {
-        assert!(parse_status(r#""""#).is_empty());
-    }
-
-    #[test]
-    fn deserialize_comma_separated_single_active() {
-        assert_eq!(parse_status(r#""active""#), vec![ResourceStatus::Active]);
-    }
-
-    #[test]
-    fn deserialize_comma_separated_multiple_statuses() {
+    fn namespace_search_query_status_multiple_values() {
+        let q = parse_query(r#"{"status":["Active","Disabled","Deleted"]}"#);
         assert_eq!(
-            parse_status(r#""active,disabled,deleted""#),
+            q.status,
             vec![
                 ResourceStatus::Active,
                 ResourceStatus::Disabled,
@@ -956,28 +915,15 @@ mod tests {
     }
 
     #[test]
-    fn deserialize_comma_separated_whitespace_trimmed() {
-        assert_eq!(
-            parse_status(r#""active , disabled""#),
-            vec![ResourceStatus::Active, ResourceStatus::Disabled]
-        );
-    }
-
-    #[test]
-    fn deserialize_comma_separated_invalid_value_returns_error() {
-        #[derive(Deserialize)]
-        struct Wrap {
-            #[allow(unused)]
-            #[serde(default, deserialize_with = "deserialize_comma_separated")]
-            status: Vec<ResourceStatus>,
-        }
-        let result: Result<Wrap, _> = serde_json::from_str(r#"{"status":"bogus"}"#);
+    fn namespace_search_query_status_invalid_returns_error() {
+        let result: Result<NamespaceSearchQuery, _> = serde_json::from_str(r#"{"status":["bogus"]}"#);
         assert!(result.is_err());
     }
 
     #[test]
-    fn deserialize_comma_separated_trailing_comma_skipped() {
-        // trailing empty segment after comma is filtered out by the `!x.is_empty()` guard
-        assert_eq!(parse_status(r#""active,""#), vec![ResourceStatus::Active]);
+    fn namespace_search_query_limit_and_offset() {
+        let q = parse_query(r#"{"limit":25,"offset":50}"#);
+        assert_eq!(q.limit, Some(25));
+        assert_eq!(q.offset, Some(50));
     }
 }

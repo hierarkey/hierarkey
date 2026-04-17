@@ -6,7 +6,7 @@ use crate::global::{DEFAULT_LIMIT_VALUE, DEFAULT_OFFSET_VALUE, MAX_LIMIT_VALUE};
 use crate::http_server::AppState;
 use crate::http_server::api_error::{ApiErrorCtx, WithCtx};
 use crate::http_server::auth_user::AuthUser;
-use crate::http_server::extractors::ApiQuery;
+use crate::http_server::extractors::ApiJson;
 use crate::http_server::handlers::ApiResult;
 use crate::http_server::handlers::namespace_response::{NamespaceResponse, NamespaceSearchResponse};
 use crate::service::namespace::NamespaceSearchQuery;
@@ -20,7 +20,7 @@ pub(crate) async fn search(
     State(state): State<AppState>,
     _auth: AuthUser,
     Extension(call_ctx): Extension<CallContext>,
-    ApiQuery(query): ApiQuery<NamespaceSearchQuery>,
+    ApiJson(query): ApiJson<NamespaceSearchQuery>,
 ) -> ApiResult<Json<ApiResponse<NamespaceSearchResponse>>> {
     let ctx = ApiErrorCtx {
         fail_code: ApiCode::NamespaceFetchFailed,
