@@ -54,4 +54,6 @@ pub enum ServiceBootstrap {
 pub struct AccountSearchResponse {
     pub entries: Vec<AccountDto>,
     pub total: usize,
+    pub limit: usize,
+    pub offset: usize,
 }

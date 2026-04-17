@@ -676,6 +676,29 @@ def test_search_limit_and_offset():
     assert d1["entries"][0]["account_name"] != d2["entries"][0]["account_name"]
 
 
+def test_search_response_includes_pagination_fields():
+    """Search JSON response includes limit and offset alongside total."""
+    r = hkey.run("account", "search", "--all", "--limit", "5", "--offset", "2", "--json")
+    assert r.returncode == 0
+    data = json.loads(r.stdout)
+    assert "limit" in data, "limit field missing from search response"
+    assert "offset" in data, "offset field missing from search response"
+    assert "total" in data
+    assert data["limit"] == 5
+    assert data["offset"] == 2
+
+
+def test_search_response_pagination_defaults():
+    """Search response reflects default limit and offset when not specified."""
+    r = hkey.run("account", "search", "--all", "--json")
+    assert r.returncode == 0
+    data = json.loads(r.stdout)
+    assert "limit" in data
+    assert "offset" in data
+    assert data["offset"] == 0
+    assert data["limit"] > 0
+
+
 def test_search_created_after():
     """--created-after filters out accounts created before the cutoff."""
     result = hkey.run(

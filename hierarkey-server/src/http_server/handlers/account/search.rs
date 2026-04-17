@@ -2,6 +2,7 @@
 // Copyright (C) 2025-2026 Joshua Thijssen <jthijssen@hierarkey.com>
 
 use crate::audit_context::CallContext;
+use crate::global::{DEFAULT_LIMIT_VALUE, DEFAULT_OFFSET_VALUE, MAX_LIMIT_VALUE};
 use crate::http_server::AppState;
 use crate::http_server::api_error::{ApiErrorCtx, WithCtx};
 use crate::http_server::auth_user::AuthUser;
@@ -19,6 +20,8 @@ use serde::Serialize;
 pub struct AccountSearchResponse {
     entries: Vec<AccountDto>,
     total: usize,
+    limit: usize,
+    offset: usize,
 }
 
 #[axum::debug_handler]
@@ -38,10 +41,11 @@ pub(crate) async fn search(
         .await
         .ctx(ctx)?;
 
-    // let entries = accounts.into_iter().map(|u| AccountResponse::from(&u)).collect();
     let data = AccountSearchResponse {
         entries: accounts,
         total,
+        limit: payload.limit.unwrap_or(DEFAULT_LIMIT_VALUE).min(MAX_LIMIT_VALUE),
+        offset: payload.offset.unwrap_or(DEFAULT_OFFSET_VALUE),
     };
 
     let status = ApiStatus::new(ApiCode::AccountListSucceeded, "Account list retrieved successfully".to_string());
