@@ -13,7 +13,10 @@ pub mod annotate;
 pub mod create;
 pub mod delete;
 pub mod describe;
+pub mod disable;
+pub mod enable;
 pub mod list;
+pub mod restore;
 pub mod reveal;
 pub mod revise;
 pub mod search;
@@ -41,6 +44,12 @@ pub enum SecretCommand {
     Reveal(SecretRevealArgs),
     /// Activate a specific secret revision
     Activate(SecretActivateArgs),
+    /// Enable a secret (make it accessible again after being disabled)
+    Enable(SecretEnableArgs),
+    /// Disable a secret (block access without deleting it)
+    Disable(SecretDisableArgs),
+    /// Restore a previously deleted secret by its ID
+    Restore(SecretRestoreArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -528,4 +537,59 @@ impl SecretActivateArgs {
             .or(self.id.as_deref())
             .unwrap_or_else(|| unreachable!("clap requires --ref or --id"))
     }
+}
+
+#[derive(Parser, Debug)]
+pub struct SecretEnableArgs {
+    /// Fully qualified path for the secret (/namespace:path)
+    #[arg(
+        long = "ref",
+        help = "Fully qualified path for the secret (/namespace:path)",
+        conflicts_with = "id",
+        required_unless_present = "id"
+    )]
+    pub sec_ref: Option<String>,
+    /// Short ID of the secret (e.g. sec_abc123)
+    #[arg(long, conflicts_with = "sec_ref", required_unless_present = "sec_ref")]
+    pub id: Option<String>,
+}
+
+impl SecretEnableArgs {
+    pub fn sec_ref_value(&self) -> &str {
+        self.sec_ref
+            .as_deref()
+            .or(self.id.as_deref())
+            .unwrap_or_else(|| unreachable!("clap requires --ref or --id"))
+    }
+}
+
+#[derive(Parser, Debug)]
+pub struct SecretDisableArgs {
+    /// Fully qualified path for the secret (/namespace:path)
+    #[arg(
+        long = "ref",
+        help = "Fully qualified path for the secret (/namespace:path)",
+        conflicts_with = "id",
+        required_unless_present = "id"
+    )]
+    pub sec_ref: Option<String>,
+    /// Short ID of the secret (e.g. sec_abc123)
+    #[arg(long, conflicts_with = "sec_ref", required_unless_present = "sec_ref")]
+    pub id: Option<String>,
+}
+
+impl SecretDisableArgs {
+    pub fn sec_ref_value(&self) -> &str {
+        self.sec_ref
+            .as_deref()
+            .or(self.id.as_deref())
+            .unwrap_or_else(|| unreachable!("clap requires --ref or --id"))
+    }
+}
+
+#[derive(Parser, Debug)]
+pub struct SecretRestoreArgs {
+    /// ID of the deleted secret — short ID (e.g. sec_01J...) or full UUID
+    #[arg(long)]
+    pub id: String,
 }
