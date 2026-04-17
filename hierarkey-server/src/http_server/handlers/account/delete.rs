@@ -12,6 +12,7 @@ use axum::extract::State;
 use axum::{Extension, Json};
 use hierarkey_core::api::response::ApiResponse;
 use hierarkey_core::api::status::{ApiCode, ApiStatus};
+use serde_json::json;
 
 #[axum::debug_handler]
 pub(crate) async fn delete(
@@ -45,14 +46,20 @@ pub(crate) async fn delete(
         .await
         .ctx(ctx)?;
 
+    let snapshot = json!({
+        "account_type": account.account_type.to_string(),
+        "email": account.email,
+        "full_name": account.full_name,
+        "description": account.metadata.description(),
+        "labels": account.metadata.labels(),
+    });
+
     state
         .audit_service
         .log(
-            AuditEvent::from_ctx(&call_ctx, event_type::ACCOUNT_DELETE, AuditOutcome::Success).with_resource(
-                "account",
-                account.id.0,
-                account.name.as_str(),
-            ),
+            AuditEvent::from_ctx(&call_ctx, event_type::ACCOUNT_DELETE, AuditOutcome::Success)
+                .with_resource("account", account.id.0, account.name.as_str())
+                .with_metadata(snapshot),
         )
         .await;
 

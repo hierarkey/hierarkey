@@ -9,6 +9,7 @@ use hkey::commands::account::{
     AccountCommand,
     change_password::account_change_password,
     create::account_create,
+    delete::account_delete,
     demote::account_demote,
     describe::account_describe,
     disable::account_disable,
@@ -139,6 +140,7 @@ fn run(cli_args: CliArgs) -> CliResult<()> {
                 account_unlink_federated_identity(&client, &cli_args, args)?
             }
             AccountCommand::Update(args) => account_update(&client, &cli_args, args)?,
+            AccountCommand::Delete(args) => account_delete(&client, &cli_args, args)?,
         },
         Commands::Auth(cmd) => match cmd {
             AuthCommand::Login(args) => auth_login(&client, &cli_args, args)?,

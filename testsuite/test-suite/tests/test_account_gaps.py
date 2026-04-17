@@ -6,12 +6,12 @@
 #   4.1.13  User account cannot have passphrase auth (only password)
 #   4.1.14  Passphrase must be ≥ 16 characters
 #   4.2.2   Describe account by short ID
-#   4.3.*   Update account (no CLI — direct HTTP)
+#   4.3.*   Update account (direct HTTP; CLI tests in test_account_full.py §14)
 #   4.4.5   Lock/unlock is idempotent
 #   4.5.5   Promotion is reflected in describe output
 #   4.5.6   Demoted account loses admin privileges
 #   4.6.3   Old password no longer works after change
-#   4.7.*   Delete account (no CLI — direct HTTP)
+#   4.7.*   Delete account (direct HTTP; CLI tests in test_account_full.py §15)
 #   4.8.*   Client certificate (mTLS) — CE implementation, EE-gated in CLI docs
 
 import json
