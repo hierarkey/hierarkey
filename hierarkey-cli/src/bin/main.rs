@@ -21,6 +21,7 @@ use hkey::commands::account::{
     promote::account_promote,
     set_cert::account_set_cert,
     unlock::account_unlock,
+    update::account_update,
 };
 use hkey::commands::audit::{AuditCommand, events::audit_events, verify::audit_verify};
 use hkey::commands::auth::{
@@ -137,6 +138,7 @@ fn run(cli_args: CliArgs) -> CliResult<()> {
             AccountCommand::UnlinkFederatedIdentity(args) => {
                 account_unlink_federated_identity(&client, &cli_args, args)?
             }
+            AccountCommand::Update(args) => account_update(&client, &cli_args, args)?,
         },
         Commands::Auth(cmd) => match cmd {
             AuthCommand::Login(args) => auth_login(&client, &cli_args, args)?,
