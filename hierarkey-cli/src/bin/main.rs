@@ -53,7 +53,8 @@ use hkey::commands::rekey::{RekeyCommand, kek::rekey_kek};
 use hkey::commands::rewrap::{RewrapCommand, dek::rewrap_dek, kek::rewrap_kek};
 use hkey::commands::secret::{
     SecretCommand, activate::secret_activate, annotate::secret_annotate, create::secret_create, delete::secret_delete,
-    describe::secret_describe, list::secret_list, reveal::secret_reveal, revise::secret_revise, search::secret_search,
+    describe::secret_describe, disable::secret_disable, enable::secret_enable, list::secret_list,
+    restore::secret_restore, reveal::secret_reveal, revise::secret_revise, search::secret_search,
     update::secret_update,
 };
 use hkey::commands::status::status;
@@ -170,6 +171,9 @@ fn run(cli_args: CliArgs) -> CliResult<()> {
             SecretCommand::Revise(args) => secret_revise(&client, &cli_args, args)?,
             SecretCommand::Annotate(args) => secret_annotate(&client, &cli_args, args)?,
             SecretCommand::Activate(args) => secret_activate(&client, &cli_args, args)?,
+            SecretCommand::Enable(args) => secret_enable(&client, &cli_args, args)?,
+            SecretCommand::Disable(args) => secret_disable(&client, &cli_args, args)?,
+            SecretCommand::Restore(args) => secret_restore(&client, &cli_args, args)?,
         },
         Commands::Namespace(cmd) => match cmd {
             NamespaceCommand::Create(args) => namespace_create(&client, &cli_args, args)?,

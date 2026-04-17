@@ -19,8 +19,8 @@
 #   6.7.x   Annotate Revision
 #   6.8.x   Delete Secret
 #   6.9.x   Secret Types
-#   6.10.x  Disable / Enable Secret
-#   6.11.x  Restore Deleted Secret
+#   6.10.x  Disable / Enable Secret (HTTP + CLI tests in TestDisableEnableSecretCLI)
+#   6.11.x  Restore Deleted Secret (HTTP + CLI tests in TestRestoreSecretCLI)
 
 import base64
 import json
@@ -856,3 +856,187 @@ class TestRestoreSecret:
         assert r.status_code in (404, 400), (
             f"Expected 404 or 400 for nonexistent secret, got {r.status_code}"
         )
+
+
+# ---------------------------------------------------------------------------
+# 6.10 (CLI) — Disable / Enable Secret via hkey CLI
+# ---------------------------------------------------------------------------
+
+class TestDisableEnableSecretCLI:
+
+    def test_disable_via_cli_ref_prevents_reveal(self):
+        """6.10.CLI.1 — `hkey secret disable --ref` blocks reveal."""
+        ns = _ns()
+        ref = _setup(ns, value="hidden-value")
+
+        result = hkey.run("secret", "disable", "--ref", ref)
+        assert result.returncode == 0, f"disable failed: {result.stderr}"
+        assert "disabled successfully" in result.stdout
+
+        result = hkey.run("secret", "reveal", "--ref", ref)
+        assert result.returncode != 0, "Expected reveal to fail after CLI disable"
+
+    def test_disable_via_cli_short_id_prevents_reveal(self):
+        """6.10.CLI.2 — `hkey secret disable --id sec_...` blocks reveal."""
+        ns = _ns()
+        ref = _setup(ns, value="also-hidden")
+        short_id = _describe_json(ref)["short_id"]
+
+        result = hkey.run("secret", "disable", "--id", short_id)
+        assert result.returncode == 0, f"disable --id failed: {result.stderr}"
+
+        result = hkey.run("secret", "reveal", "--ref", ref)
+        assert result.returncode != 0, "Expected reveal to fail after CLI disable by ID"
+
+    def test_enable_via_cli_ref_restores_reveal(self):
+        """6.10.CLI.3 — `hkey secret enable --ref` makes a disabled secret revealable again."""
+        ns = _ns()
+        ref = _setup(ns, value="comes-back-cli")
+        short_id = _describe_json(ref)["short_id"]
+
+        # Disable via HTTP (to isolate enable CLI under test)
+        import requests
+        requests.post(
+            f"{_server_url()}/v1/secrets/{short_id}/disable",
+            headers={"Authorization": f"Bearer {_admin_token()}"},
+        )
+
+        result = hkey.run("secret", "enable", "--ref", ref)
+        assert result.returncode == 0, f"enable --ref failed: {result.stderr}"
+        assert "enabled successfully" in result.stdout
+
+        result = hkey.run("secret", "reveal", "--ref", ref)
+        assert result.returncode == 0, f"Expected reveal to succeed after CLI enable: {result.stderr}"
+        assert "comes-back-cli" in result.stdout
+
+    def test_enable_via_cli_short_id_restores_reveal(self):
+        """6.10.CLI.4 — `hkey secret enable --id sec_...` restores revealability."""
+        ns = _ns()
+        ref = _setup(ns, value="back-by-id")
+        short_id = _describe_json(ref)["short_id"]
+
+        import requests
+        requests.post(
+            f"{_server_url()}/v1/secrets/{short_id}/disable",
+            headers={"Authorization": f"Bearer {_admin_token()}"},
+        )
+
+        result = hkey.run("secret", "enable", "--id", short_id)
+        assert result.returncode == 0, f"enable --id failed: {result.stderr}"
+
+        result = hkey.run("secret", "reveal", "--ref", ref)
+        assert result.returncode == 0, f"Reveal after enable by ID failed: {result.stderr}"
+        assert "back-by-id" in result.stdout
+
+    def test_disable_json_output(self):
+        """6.10.CLI.5 — `hkey secret disable --json` returns JSON with disabled=true."""
+        ns = _ns()
+        ref = _setup(ns)
+
+        result = hkey.run("secret", "disable", "--ref", ref, "--json")
+        assert result.returncode == 0, f"disable --json failed: {result.stderr}"
+        data = json.loads(result.stdout)
+        assert data.get("disabled") is True
+
+    def test_enable_json_output(self):
+        """6.10.CLI.6 — `hkey secret enable --json` returns JSON with enabled=true."""
+        ns = _ns()
+        ref = _setup(ns)
+        short_id = _describe_json(ref)["short_id"]
+
+        import requests
+        requests.post(
+            f"{_server_url()}/v1/secrets/{short_id}/disable",
+            headers={"Authorization": f"Bearer {_admin_token()}"},
+        )
+
+        result = hkey.run("secret", "enable", "--ref", ref, "--json")
+        assert result.returncode == 0, f"enable --json failed: {result.stderr}"
+        data = json.loads(result.stdout)
+        assert data.get("enabled") is True
+
+    def test_disable_nonexistent_secret_fails(self):
+        """6.10.CLI.7 — Disabling a non-existent secret returns an error."""
+        ns = _ns()
+        helpers.create_namespace(ns)
+
+        result = hkey.run("secret", "disable", "--ref", f"{ns}:no-such-key")
+        assert result.returncode != 0, "Expected disable of non-existent secret to fail"
+
+    def test_enable_nonexistent_secret_fails(self):
+        """6.10.CLI.8 — Enabling a non-existent secret returns an error."""
+        ns = _ns()
+        helpers.create_namespace(ns)
+
+        result = hkey.run("secret", "enable", "--ref", f"{ns}:no-such-key")
+        assert result.returncode != 0, "Expected enable of non-existent secret to fail"
+
+
+# ---------------------------------------------------------------------------
+# 6.11 (CLI) — Restore Deleted Secret via hkey CLI
+# ---------------------------------------------------------------------------
+
+class TestRestoreSecretCLI:
+
+    def test_restore_via_cli_uuid_makes_secret_revealable(self):
+        """6.11.CLI.1 — `hkey secret restore --id <uuid>` restores a deleted secret."""
+        ns = _ns()
+        ref = _setup(ns, value="restored-cli")
+        secret_uuid = _describe_json(ref)["id"]
+
+        hkey.run("secret", "delete", "--ref", ref, "--confirm")
+
+        result = hkey.run("secret", "restore", "--id", secret_uuid)
+        assert result.returncode == 0, f"restore --id <uuid> failed: {result.stderr}"
+        assert "restored successfully" in result.stdout
+
+        result = hkey.run("secret", "reveal", "--ref", ref)
+        assert result.returncode == 0, f"Expected reveal to succeed after restore: {result.stderr}"
+        assert "restored-cli" in result.stdout
+
+    def test_restore_via_cli_short_id_makes_secret_revealable(self):
+        """6.11.CLI.2 — `hkey secret restore --id sec_...` also works with the short ID."""
+        ns = _ns()
+        ref = _setup(ns, value="restored-by-short-id")
+        short_id = _describe_json(ref)["short_id"]
+
+        hkey.run("secret", "delete", "--ref", ref, "--confirm")
+
+        result = hkey.run("secret", "restore", "--id", short_id)
+        assert result.returncode == 0, f"restore --id <short_id> failed: {result.stderr}"
+
+        result = hkey.run("secret", "reveal", "--ref", ref)
+        assert result.returncode == 0, f"Expected reveal to succeed after restore: {result.stderr}"
+        assert "restored-by-short-id" in result.stdout
+
+    def test_restore_reappears_in_list(self):
+        """6.11.CLI.3 — A restored secret reappears in the list with status='active'."""
+        ns = _ns()
+        ref = _setup(ns)
+        secret_uuid = _describe_json(ref)["id"]
+
+        hkey.run("secret", "delete", "--ref", ref, "--confirm")
+        hkey.run("secret", "restore", "--id", secret_uuid)
+
+        list_data = helpers.get_secrets_json(ns)
+        entry = helpers.find_secret(list_data, "secret/key")
+        assert entry is not None, "Restored secret should appear in list"
+        assert entry["status"] == "active", f"Expected status 'active', got '{entry['status']}'"
+
+    def test_restore_json_output(self):
+        """6.11.CLI.4 — `hkey secret restore --json` returns JSON with restored=true."""
+        ns = _ns()
+        ref = _setup(ns)
+        secret_uuid = _describe_json(ref)["id"]
+
+        hkey.run("secret", "delete", "--ref", ref, "--confirm")
+
+        result = hkey.run("secret", "restore", "--id", secret_uuid, "--json")
+        assert result.returncode == 0, f"restore --json failed: {result.stderr}"
+        data = json.loads(result.stdout)
+        assert data.get("restored") is True
+
+    def test_restore_nonexistent_id_fails(self):
+        """6.11.CLI.5 — Restoring a random UUID that doesn't exist returns an error."""
+        result = hkey.run("secret", "restore", "--id", str(uuid.uuid4()))
+        assert result.returncode != 0, "Expected restore of nonexistent secret to fail"
