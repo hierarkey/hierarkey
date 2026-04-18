@@ -94,7 +94,10 @@ pub(crate) async fn link(
     }
 
     if !state.account_service.is_admin(&call_ctx, auth.user.id).await.ctx(ctx)? {
-        return Err(HttpError::forbidden(ctx, "Admin privilege required to manage federated identities"));
+        return Err(HttpError::forbidden(
+            ctx,
+            "Admin privilege required to manage federated identities",
+        ));
     }
 
     let account = resolve_account(&state, &call_ctx, ctx, &account_name)
@@ -112,16 +115,30 @@ pub(crate) async fn link(
     }
 
     // Validate that the provider_id is known to this server.
-    if !state
+    let provider = state
         .federated_providers
         .iter()
-        .any(|p| p.provider_id() == req.provider_id)
-    {
-        return Err(HttpError {
+        .find(|p| p.provider_id() == req.provider_id)
+        .ok_or_else(|| HttpError {
             http: StatusCode::BAD_REQUEST,
             fail_code: ctx.fail_code,
             reason: ApiErrorCode::ValidationFailed,
             message: format!("unknown provider_id '{}' — check server configuration", req.provider_id),
+            details: None,
+        })?;
+
+    // Validate that external_issuer matches the provider's configured issuer so the
+    // link can actually be resolved at auth time (exchange() always returns provider.issuer()).
+    let configured_issuer = provider.issuer();
+    if !configured_issuer.is_empty() && configured_issuer != req.external_issuer {
+        return Err(HttpError {
+            http: StatusCode::BAD_REQUEST,
+            fail_code: ctx.fail_code,
+            reason: ApiErrorCode::ValidationFailed,
+            message: format!(
+                "external_issuer '{}' does not match the configured issuer for provider '{}' (expected '{}')",
+                req.external_issuer, req.provider_id, configured_issuer
+            ),
             details: None,
         });
     }
@@ -186,7 +203,10 @@ pub(crate) async fn describe(
     };
 
     if !state.account_service.is_admin(&call_ctx, auth.user.id).await.ctx(ctx)? {
-        return Err(HttpError::forbidden(ctx, "Admin privilege required to view federated identities"));
+        return Err(HttpError::forbidden(
+            ctx,
+            "Admin privilege required to view federated identities",
+        ));
     }
 
     let account = resolve_account(&state, &call_ctx, ctx, &account_name)
@@ -221,7 +241,10 @@ pub(crate) async fn unlink(
     };
 
     if !state.account_service.is_admin(&call_ctx, auth.user.id).await.ctx(ctx)? {
-        return Err(HttpError::forbidden(ctx, "Admin privilege required to manage federated identities"));
+        return Err(HttpError::forbidden(
+            ctx,
+            "Admin privilege required to manage federated identities",
+        ));
     }
 
     let account = resolve_account(&state, &call_ctx, ctx, &account_name)
@@ -399,7 +422,7 @@ mod tests {
     fn link_body(provider_id: &str) -> String {
         serde_json::json!({
             "provider_id": provider_id,
-            "external_issuer": "https://issuer.example.com",
+            "external_issuer": "https://stub.example.com",
             "external_subject": "test-subject"
         })
         .to_string()
@@ -465,6 +488,34 @@ mod tests {
             &format!("/v1/accounts/{name}/federated-identity"),
             &token,
             Some(link_body("oidc")),
+        )
+        .await;
+
+        assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn link_mismatched_issuer_returns_bad_request() {
+        let mut state = create_licensed_app_state();
+        state.federated_providers = vec![Arc::new(StubProvider { id: "oidc".to_string() })];
+        let name = format!("svc-{}", uuid::Uuid::new_v4().simple());
+        create_service_account(&state, &name).await;
+        let token = create_admin_token(&state).await;
+        let app = build_test_router(state);
+
+        let body = serde_json::json!({
+            "provider_id": "oidc",
+            "external_issuer": "https://wrong-issuer.example.com",
+            "external_subject": "test-subject"
+        })
+        .to_string();
+
+        let status = do_request(
+            app,
+            "POST",
+            &format!("/v1/accounts/{name}/federated-identity"),
+            &token,
+            Some(body),
         )
         .await;
 
