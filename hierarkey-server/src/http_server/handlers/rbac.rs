@@ -119,7 +119,10 @@ mod tests {
         // Write directly to the store to bootstrap the first PlatformAdmin rule.
         let spec = RuleSpec::try_from("allow platform:admin to platform").unwrap();
         let rule = rbac_store.rule_create(admin.id, spec, Metadata::new()).await.unwrap();
-        rbac_store.bind_rule_to_user(admin.id, rule.id, admin.id, None).await.unwrap();
+        rbac_store
+            .bind_rule_to_user(admin.id, rule.id, admin.id, None)
+            .await
+            .unwrap();
 
         let (token, _) = state
             .auth_service
@@ -226,13 +229,7 @@ mod tests {
         let (state, _store) = create_mock_app_state_with_rbac_store();
         let token = create_non_admin_token(&state).await;
         let app = build_test_router(state);
-        let status = post_json(
-            app,
-            "/rule",
-            &token,
-            r#"{"spec": "allow platform:admin to platform"}"#,
-        )
-        .await;
+        let status = post_json(app, "/rule", &token, r#"{"spec": "allow platform:admin to platform"}"#).await;
         assert_eq!(status, axum::http::StatusCode::FORBIDDEN);
     }
 
@@ -241,13 +238,7 @@ mod tests {
         let (state, store) = create_mock_app_state_with_rbac_store();
         let token = create_platform_admin_token(&state, &store).await;
         let app = build_test_router(state);
-        let status = post_json(
-            app,
-            "/rule",
-            &token,
-            r#"{"spec": "allow platform:admin to platform"}"#,
-        )
-        .await;
+        let status = post_json(app, "/rule", &token, r#"{"spec": "allow platform:admin to platform"}"#).await;
         assert_eq!(status, axum::http::StatusCode::OK);
     }
 

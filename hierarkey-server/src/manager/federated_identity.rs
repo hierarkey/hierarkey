@@ -97,10 +97,7 @@ impl FederatedIdentityStore for PgFederatedIdentityStore {
         .await
         .map_err(CkError::from)?;
 
-        row.as_ref()
-            .map(Self::map_row)
-            .transpose()
-            .map_err(CkError::from)
+        row.as_ref().map(Self::map_row).transpose().map_err(CkError::from)
     }
 
     async fn find_by_account(&self, account_id: AccountId) -> CkResult<Option<FederatedIdentityRow>> {
@@ -114,10 +111,7 @@ impl FederatedIdentityStore for PgFederatedIdentityStore {
         .await
         .map_err(CkError::from)?;
 
-        row.as_ref()
-            .map(Self::map_row)
-            .transpose()
-            .map_err(CkError::from)
+        row.as_ref().map(Self::map_row).transpose().map_err(CkError::from)
     }
 
     async fn link(
@@ -208,9 +202,11 @@ pub mod memory_store {
 
             // Enforce both unique constraints the DB would.
             let account_conflict = rows.iter().any(|r| r.account_id == account_id);
-            let identity_conflict = rows
-                .iter()
-                .any(|r| r.provider_id == provider_id && r.external_issuer == external_issuer && r.external_subject == external_subject);
+            let identity_conflict = rows.iter().any(|r| {
+                r.provider_id == provider_id
+                    && r.external_issuer == external_issuer
+                    && r.external_subject == external_subject
+            });
 
             if account_conflict || identity_conflict {
                 return Err(CkError::ResourceExists {

@@ -277,12 +277,12 @@ pub(crate) async fn unlink(
 mod tests {
     use super::*;
     use crate::audit_context::CallContext;
-    use crate::global::test_utils::{create_mock_app_state_with_stores};
+    use crate::global::test_utils::create_mock_app_state_with_stores;
     use crate::http_server::AppState;
-    use crate::manager::account::InMemoryAccountStore;
     use crate::http_server::federated_auth_provider::{FederatedAuthProvider, FederatedIdentity};
     use crate::http_server::handlers::auth_response::AuthScope;
     use crate::http_server::middleware::{audit_ctx_middleware, auth_middleware};
+    use crate::manager::account::InMemoryAccountStore;
     use crate::manager::account::Password;
     use crate::service::account::{AccountData, CustomAccountData, CustomServiceAccountData, CustomUserAccountData};
     use axum::Router;
