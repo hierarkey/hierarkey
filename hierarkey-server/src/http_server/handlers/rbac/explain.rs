@@ -8,7 +8,7 @@ use crate::http_server::api_error::{ApiErrorCtx, HttpError, WithCtx};
 use crate::http_server::auth_user::AuthUser;
 use crate::http_server::extractors::ApiJson;
 use crate::http_server::handlers::ApiResult;
-use crate::rbac::{NearMissReason, RbacAllowedRequest, RbacResource};
+use crate::rbac::{NearMissReason, Permission, RbacAllowedRequest, RbacResource};
 use axum::extract::State;
 use axum::{Extension, Json};
 use hierarkey_core::Labels;
@@ -54,6 +54,12 @@ pub async fn explain(
     let ctx = ApiErrorCtx {
         fail_code: ApiCode::RbacExplainFailed,
     };
+
+    state
+        .rbac_service
+        .require_permission(&call_ctx, Permission::PlatformAdmin, RbacResource::Platform)
+        .await
+        .ctx(ctx)?;
 
     let permission =
         crate::rbac::Permission::from_str(&req.permission).map_err(|e| HttpError::bad_request(ctx, e.to_string()))?;

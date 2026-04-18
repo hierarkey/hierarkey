@@ -8,6 +8,7 @@ use crate::http_server::api_error::{ApiErrorCtx, HttpError, WithCtx};
 use crate::http_server::auth_user::AuthUser;
 use crate::http_server::extractors::ApiJson;
 use crate::http_server::handlers::ApiResult;
+use crate::rbac::{Permission, RbacResource};
 use crate::service::audit::{AuditEvent, AuditOutcome, event_type};
 use axum::extract::State;
 use axum::{Extension, Json};
@@ -34,6 +35,12 @@ pub async fn unbind(
     let ctx = ApiErrorCtx {
         fail_code: ApiCode::RbacBindingDeleteFailed,
     };
+
+    state
+        .rbac_service
+        .require_permission(&call_ctx, Permission::PlatformAdmin, RbacResource::Platform)
+        .await
+        .ctx(ctx)?;
 
     let account_id = match &req.account_name {
         Some(account_name) => {

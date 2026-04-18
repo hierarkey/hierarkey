@@ -2,9 +2,11 @@
 // Copyright (C) 2025-2026 Joshua Thijssen <jthijssen@hierarkey.com>
 
 use crate::manager::account::AccountId;
+use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use hierarkey_core::{CkError, CkResult};
 use sqlx::{PgPool, Row};
+use std::sync::Arc;
 use uuid::Uuid;
 
 // ---------------------------------------------------------------------------
@@ -23,14 +25,41 @@ pub struct FederatedIdentityRow {
 }
 
 // ---------------------------------------------------------------------------
-// Manager
+// Store trait
 // ---------------------------------------------------------------------------
 
-pub struct FederatedIdentityManager {
+#[async_trait]
+pub trait FederatedIdentityStore: Send + Sync + 'static {
+    async fn link(
+        &self,
+        account_id: AccountId,
+        provider_id: &str,
+        external_issuer: &str,
+        external_subject: &str,
+        created_by: AccountId,
+    ) -> CkResult<FederatedIdentityRow>;
+
+    async fn find_by_account(&self, account_id: AccountId) -> CkResult<Option<FederatedIdentityRow>>;
+
+    async fn find_by_provider_and_subject(
+        &self,
+        provider_id: &str,
+        external_issuer: &str,
+        external_subject: &str,
+    ) -> CkResult<Option<FederatedIdentityRow>>;
+
+    async fn unlink(&self, account_id: AccountId) -> CkResult<bool>;
+}
+
+// ---------------------------------------------------------------------------
+// Postgres implementation
+// ---------------------------------------------------------------------------
+
+pub struct PgFederatedIdentityStore {
     pool: PgPool,
 }
 
-impl FederatedIdentityManager {
+impl PgFederatedIdentityStore {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
@@ -46,10 +75,11 @@ impl FederatedIdentityManager {
             created_by: AccountId(row.try_get("created_by")?),
         })
     }
+}
 
-    /// Look up the identity row that matches a specific (provider, issuer, subject) triple.
-    /// Returns `None` if no account has been linked to this external identity.
-    pub async fn find_by_provider_and_subject(
+#[async_trait]
+impl FederatedIdentityStore for PgFederatedIdentityStore {
+    async fn find_by_provider_and_subject(
         &self,
         provider_id: &str,
         external_issuer: &str,
@@ -67,11 +97,13 @@ impl FederatedIdentityManager {
         .await
         .map_err(CkError::from)?;
 
-        row.as_ref().map(Self::map_row).transpose().map_err(CkError::from)
+        row.as_ref()
+            .map(Self::map_row)
+            .transpose()
+            .map_err(CkError::from)
     }
 
-    /// Look up the federated identity linked to a given service account, if any.
-    pub async fn find_by_account(&self, account_id: AccountId) -> CkResult<Option<FederatedIdentityRow>> {
+    async fn find_by_account(&self, account_id: AccountId) -> CkResult<Option<FederatedIdentityRow>> {
         let row = sqlx::query(
             "SELECT id, account_id, provider_id, external_issuer, external_subject, created_at, created_by \
              FROM federated_identities \
@@ -82,15 +114,13 @@ impl FederatedIdentityManager {
         .await
         .map_err(CkError::from)?;
 
-        row.as_ref().map(Self::map_row).transpose().map_err(CkError::from)
+        row.as_ref()
+            .map(Self::map_row)
+            .transpose()
+            .map_err(CkError::from)
     }
 
-    /// Link an external identity to a service account.
-    ///
-    /// Returns an error if the account already has a linked identity (unique constraint
-    /// on `account_id`) or if the same external identity is already linked to a
-    /// different account (unique constraint on `(provider_id, external_issuer, external_subject)`).
-    pub async fn link(
+    async fn link(
         &self,
         account_id: AccountId,
         provider_id: &str,
@@ -126,9 +156,7 @@ impl FederatedIdentityManager {
         Self::map_row(&row).map_err(CkError::from)
     }
 
-    /// Remove the federated identity link for an account.
-    /// Returns `true` if a row was deleted, `false` if none existed.
-    pub async fn unlink(&self, account_id: AccountId) -> CkResult<bool> {
+    async fn unlink(&self, account_id: AccountId) -> CkResult<bool> {
         let result = sqlx::query("DELETE FROM federated_identities WHERE account_id = $1")
             .bind(account_id.0)
             .execute(&self.pool)
@@ -139,31 +167,171 @@ impl FederatedIdentityManager {
     }
 }
 
+// ---------------------------------------------------------------------------
+// In-memory implementation (for tests)
+// ---------------------------------------------------------------------------
+
+#[cfg(any(test, test))]
+pub mod memory_store {
+    use super::*;
+    use parking_lot::Mutex;
+
+    pub struct InMemoryFederatedIdentityStore {
+        rows: Mutex<Vec<FederatedIdentityRow>>,
+    }
+
+    impl InMemoryFederatedIdentityStore {
+        pub fn new() -> Self {
+            Self {
+                rows: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    impl Default for InMemoryFederatedIdentityStore {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    #[async_trait]
+    impl FederatedIdentityStore for InMemoryFederatedIdentityStore {
+        async fn link(
+            &self,
+            account_id: AccountId,
+            provider_id: &str,
+            external_issuer: &str,
+            external_subject: &str,
+            created_by: AccountId,
+        ) -> CkResult<FederatedIdentityRow> {
+            let mut rows = self.rows.lock();
+
+            // Enforce both unique constraints the DB would.
+            let account_conflict = rows.iter().any(|r| r.account_id == account_id);
+            let identity_conflict = rows
+                .iter()
+                .any(|r| r.provider_id == provider_id && r.external_issuer == external_issuer && r.external_subject == external_subject);
+
+            if account_conflict || identity_conflict {
+                return Err(CkError::ResourceExists {
+                    kind: "federated_identity",
+                    id: format!("{provider_id}/{external_issuer}/{external_subject}"),
+                });
+            }
+
+            let row = FederatedIdentityRow {
+                id: Uuid::new_v4(),
+                account_id,
+                provider_id: provider_id.to_string(),
+                external_issuer: external_issuer.to_string(),
+                external_subject: external_subject.to_string(),
+                created_at: Utc::now(),
+                created_by,
+            };
+            rows.push(row.clone());
+            Ok(row)
+        }
+
+        async fn find_by_account(&self, account_id: AccountId) -> CkResult<Option<FederatedIdentityRow>> {
+            Ok(self.rows.lock().iter().find(|r| r.account_id == account_id).cloned())
+        }
+
+        async fn find_by_provider_and_subject(
+            &self,
+            provider_id: &str,
+            external_issuer: &str,
+            external_subject: &str,
+        ) -> CkResult<Option<FederatedIdentityRow>> {
+            Ok(self
+                .rows
+                .lock()
+                .iter()
+                .find(|r| {
+                    r.provider_id == provider_id
+                        && r.external_issuer == external_issuer
+                        && r.external_subject == external_subject
+                })
+                .cloned())
+        }
+
+        async fn unlink(&self, account_id: AccountId) -> CkResult<bool> {
+            let mut rows = self.rows.lock();
+            let before = rows.len();
+            rows.retain(|r| r.account_id != account_id);
+            Ok(rows.len() < before)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Manager (delegates to a store)
+// ---------------------------------------------------------------------------
+
+pub struct FederatedIdentityManager {
+    store: Arc<dyn FederatedIdentityStore>,
+}
+
+impl FederatedIdentityManager {
+    pub fn new(pool: PgPool) -> Self {
+        Self {
+            store: Arc::new(PgFederatedIdentityStore::new(pool)),
+        }
+    }
+
+    #[cfg(any(test, test))]
+    pub fn in_memory() -> Self {
+        Self {
+            store: Arc::new(memory_store::InMemoryFederatedIdentityStore::new()),
+        }
+    }
+
+    pub async fn find_by_provider_and_subject(
+        &self,
+        provider_id: &str,
+        external_issuer: &str,
+        external_subject: &str,
+    ) -> CkResult<Option<FederatedIdentityRow>> {
+        self.store
+            .find_by_provider_and_subject(provider_id, external_issuer, external_subject)
+            .await
+    }
+
+    pub async fn find_by_account(&self, account_id: AccountId) -> CkResult<Option<FederatedIdentityRow>> {
+        self.store.find_by_account(account_id).await
+    }
+
+    pub async fn link(
+        &self,
+        account_id: AccountId,
+        provider_id: &str,
+        external_issuer: &str,
+        external_subject: &str,
+        created_by: AccountId,
+    ) -> CkResult<FederatedIdentityRow> {
+        self.store
+            .link(account_id, provider_id, external_issuer, external_subject, created_by)
+            .await
+    }
+
+    pub async fn unlink(&self, account_id: AccountId) -> CkResult<bool> {
+        self.store.unlink(account_id).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use memory_store::InMemoryFederatedIdentityStore;
 
-    #[tokio::test]
-    async fn new_creates_manager() {
-        let pool = sqlx::PgPool::connect_lazy("postgres://localhost/test").unwrap();
-        let manager = FederatedIdentityManager::new(pool);
-        // Verify the manager was constructed without panicking.
-        drop(manager);
+    fn make_manager() -> FederatedIdentityManager {
+        FederatedIdentityManager {
+            store: Arc::new(InMemoryFederatedIdentityStore::new()),
+        }
     }
 
-    // The remaining operations (link, find_by_account, find_by_provider_and_subject, unlink)
-    // require a live PostgreSQL database with migrations applied and are covered by the
-    // integration test suite. Mark them as ignored so they can be run selectively with
-    // `cargo test -- --ignored` when a test database is available.
-
     #[tokio::test]
-    #[ignore = "requires live PostgreSQL with migrations"]
     async fn link_and_find_round_trip() {
-        let pool = sqlx::PgPool::connect("postgres://localhost/hierarkey_test")
-            .await
-            .unwrap();
-        let manager = FederatedIdentityManager::new(pool);
-
+        let manager = make_manager();
         let account_id = AccountId::new();
         let actor_id = AccountId::new();
 
@@ -177,12 +345,10 @@ mod tests {
         assert_eq!(row.external_issuer, "https://issuer.example.com");
         assert_eq!(row.external_subject, "subject-abc");
 
-        // find_by_account
         let found = manager.find_by_account(account_id).await.unwrap();
         assert!(found.is_some());
         assert_eq!(found.unwrap().external_subject, "subject-abc");
 
-        // find_by_provider_and_subject
         let found = manager
             .find_by_provider_and_subject("oidc", "https://issuer.example.com", "subject-abc")
             .await
@@ -190,44 +356,30 @@ mod tests {
         assert!(found.is_some());
         assert_eq!(found.unwrap().account_id, account_id);
 
-        // unlink
         let deleted = manager.unlink(account_id).await.unwrap();
         assert!(deleted);
 
-        // verify gone
         let gone = manager.find_by_account(account_id).await.unwrap();
         assert!(gone.is_none());
     }
 
     #[tokio::test]
-    #[ignore = "requires live PostgreSQL with migrations"]
     async fn unlink_nonexistent_returns_false() {
-        let pool = sqlx::PgPool::connect("postgres://localhost/hierarkey_test")
-            .await
-            .unwrap();
-        let manager = FederatedIdentityManager::new(pool);
+        let manager = make_manager();
         let result = manager.unlink(AccountId::new()).await.unwrap();
         assert!(!result);
     }
 
     #[tokio::test]
-    #[ignore = "requires live PostgreSQL with migrations"]
     async fn find_by_account_returns_none_when_not_linked() {
-        let pool = sqlx::PgPool::connect("postgres://localhost/hierarkey_test")
-            .await
-            .unwrap();
-        let manager = FederatedIdentityManager::new(pool);
+        let manager = make_manager();
         let result = manager.find_by_account(AccountId::new()).await.unwrap();
         assert!(result.is_none());
     }
 
     #[tokio::test]
-    #[ignore = "requires live PostgreSQL with migrations"]
     async fn duplicate_link_returns_resource_exists_error() {
-        let pool = sqlx::PgPool::connect("postgres://localhost/hierarkey_test")
-            .await
-            .unwrap();
-        let manager = FederatedIdentityManager::new(pool);
+        let manager = make_manager();
         let account_id = AccountId::new();
         let actor_id = AccountId::new();
 

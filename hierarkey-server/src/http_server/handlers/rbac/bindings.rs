@@ -10,6 +10,7 @@ use crate::http_server::api_error::{ApiErrorCtx, HttpError, WithCtx};
 use crate::http_server::auth_user::AuthUser;
 use crate::http_server::extractors::ApiJson;
 use crate::http_server::handlers::ApiResult;
+use crate::rbac::{Permission, RbacResource};
 use axum::extract::State;
 use axum::{Extension, Json};
 use hierarkey_core::api::response::ApiResponse;
@@ -32,6 +33,12 @@ pub async fn bindings(
     let ctx = ApiErrorCtx {
         fail_code: ApiCode::RbacBindingsListFailed,
     };
+
+    state
+        .rbac_service
+        .require_permission(&call_ctx, Permission::PlatformAdmin, RbacResource::Platform)
+        .await
+        .ctx(ctx)?;
 
     let (account_id, account_short_id) = match req.account {
         None => {
@@ -75,6 +82,12 @@ pub async fn bindings_all(
     let ctx = ApiErrorCtx {
         fail_code: ApiCode::RbacBindingsListAllFailed,
     };
+
+    state
+        .rbac_service
+        .require_permission(&call_ctx, Permission::PlatformAdmin, RbacResource::Platform)
+        .await
+        .ctx(ctx)?;
 
     let all_bindings = state
         .rbac_service

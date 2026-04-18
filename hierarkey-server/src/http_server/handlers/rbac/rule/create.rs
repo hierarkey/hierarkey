@@ -9,6 +9,7 @@ use crate::http_server::auth_user::AuthUser;
 use crate::http_server::extractors::ApiJson;
 use crate::http_server::handlers::ApiResult;
 use crate::rbac::spec::RuleSpec;
+use crate::rbac::{Permission, RbacResource};
 use crate::service::audit::{AuditEvent, AuditOutcome, event_type};
 use axum::extract::State;
 use axum::{Extension, Json};
@@ -32,6 +33,12 @@ pub async fn create(
     let ctx = ApiErrorCtx {
         fail_code: ApiCode::RbacRuleCreateFailed,
     };
+
+    state
+        .rbac_service
+        .require_permission(&call_ctx, Permission::PlatformAdmin, RbacResource::Platform)
+        .await
+        .ctx(ctx)?;
 
     let spec = RuleSpec::try_from(req.spec.as_str()).map_err(|e| HttpError::bad_request(ctx, e.to_string()))?;
 
