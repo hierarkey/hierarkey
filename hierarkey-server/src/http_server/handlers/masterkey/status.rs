@@ -8,6 +8,7 @@ use crate::http_server::auth_user::AuthUser;
 use crate::http_server::handlers::ApiResult;
 use crate::http_server::handlers::masterkey_response::{MasterKeyResponse, MasterKeyStatusResponse};
 use crate::manager::masterkey::MasterKeyStatus;
+use crate::rbac::{Permission, RbacResource};
 use axum::extract::State;
 use axum::{Extension, Json};
 use hierarkey_core::api::response::ApiResponse;
@@ -29,6 +30,12 @@ pub(crate) async fn status(
     let ctx = ApiErrorCtx {
         fail_code: ApiCode::MasterKeyStatusFailed,
     };
+
+    state
+        .rbac_service
+        .require_permission(&call_ctx, Permission::PlatformAdmin, RbacResource::Platform)
+        .await
+        .ctx(ctx)?;
 
     let mut entries: Vec<MasterKeyStatusResponse> = Vec::new();
 
