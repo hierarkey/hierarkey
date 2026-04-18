@@ -8,6 +8,7 @@ use crate::http_server::api_error::{ApiErrorCtx, WithCtx};
 use crate::http_server::auth_user::AuthUser;
 use crate::http_server::extractors::{ApiJson, ApiPath};
 use crate::http_server::handlers::ApiResult;
+use crate::rbac::{Permission, RbacResource};
 use crate::service::audit::{AuditEvent, AuditOutcome, event_type};
 use axum::extract::State;
 use axum::{Extension, Json};
@@ -32,6 +33,12 @@ pub async fn update(
     let ctx = ApiErrorCtx {
         fail_code: ApiCode::RbacRoleUpdateFailed,
     };
+
+    state
+        .rbac_service
+        .require_permission(&call_ctx, Permission::PlatformAdmin, RbacResource::Platform)
+        .await
+        .ctx(ctx)?;
 
     let role = state.rbac_service.role_get_by_name(&call_ctx, &name).await.ctx(ctx)?;
 

@@ -8,6 +8,7 @@ use crate::http_server::api_error::{ApiErrorCtx, WithCtx};
 use crate::http_server::auth_user::AuthUser;
 use crate::http_server::extractors::ApiJson;
 use crate::http_server::handlers::ApiResult;
+use crate::rbac::{Permission, RbacResource};
 use axum::extract::State;
 use axum::{Extension, Json};
 use hierarkey_core::api::response::ApiResponse;
@@ -32,6 +33,12 @@ pub async fn search(
     let ctx = ApiErrorCtx {
         fail_code: ApiCode::RbacRoleListFailed,
     };
+
+    state
+        .rbac_service
+        .require_permission(&call_ctx, Permission::PlatformAdmin, RbacResource::Platform)
+        .await
+        .ctx(ctx)?;
 
     let roles = state.rbac_service.role_search(&call_ctx).await.ctx(ctx)?;
 

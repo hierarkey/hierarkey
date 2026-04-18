@@ -6,6 +6,7 @@ use crate::http_server::AppState;
 use crate::http_server::api_error::{ApiErrorCtx, WithCtx};
 use crate::http_server::extractors::ApiPath;
 use crate::http_server::handlers::ApiResult;
+use crate::rbac::{Permission, RbacResource};
 use crate::service::audit::{AuditEvent, AuditOutcome, event_type};
 use axum::extract::State;
 use axum::{Extension, Json};
@@ -21,6 +22,12 @@ pub(crate) async fn delete(
     let ctx = ApiErrorCtx {
         fail_code: ApiCode::MasterKeyDeleteFailed,
     };
+
+    state
+        .rbac_service
+        .require_permission(&call_ctx, Permission::PlatformAdmin, RbacResource::Platform)
+        .await
+        .ctx(ctx)?;
 
     let master_key = super::resolve_masterkey(&state, &call_ctx, ctx, &name).await?;
 

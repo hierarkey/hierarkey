@@ -3,10 +3,11 @@
 
 use crate::audit_context::CallContext;
 use crate::http_server::AppState;
-use crate::http_server::api_error::{ApiErrorCtx, HttpError};
+use crate::http_server::api_error::{ApiErrorCtx, HttpError, WithCtx};
 use crate::http_server::auth_user::AuthUser;
 use crate::http_server::extractors::{ApiJson, ApiPath};
 use crate::http_server::handlers::ApiResult;
+use crate::rbac::{Permission, RbacResource};
 use crate::service::audit::{AuditEvent, AuditOutcome, event_type};
 use crate::service::masterkey::MasterKeyLockOutcome;
 use axum::extract::State;
@@ -31,6 +32,12 @@ pub(crate) async fn lock(
     let ctx = ApiErrorCtx {
         fail_code: ApiCode::MasterKeyLockFailed,
     };
+
+    state
+        .rbac_service
+        .require_permission(&call_ctx, Permission::PlatformAdmin, RbacResource::Platform)
+        .await
+        .ctx(ctx)?;
 
     let master_key = super::resolve_masterkey(&state, &call_ctx, ctx, &name).await?;
 

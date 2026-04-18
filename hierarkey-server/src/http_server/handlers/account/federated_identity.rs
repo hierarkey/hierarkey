@@ -3,7 +3,7 @@
 
 //! Handlers for managing the federated identity link on a service account.
 //!
-//! Routes (all require an authenticated `Auth`-scoped token):
+//! Routes (all require an authenticated `Auth`-scoped token AND admin privilege):
 //!   POST   /v1/accounts/{account}/federated-identity   link
 //!   GET    /v1/accounts/{account}/federated-identity   describe
 //!   DELETE /v1/accounts/{account}/federated-identity   unlink
@@ -93,6 +93,13 @@ pub(crate) async fn link(
         ));
     }
 
+    if !state.account_service.is_admin(&call_ctx, auth.user.id).await.ctx(ctx)? {
+        return Err(HttpError::forbidden(
+            ctx,
+            "Admin privilege required to manage federated identities",
+        ));
+    }
+
     let account = resolve_account(&state, &call_ctx, ctx, &account_name)
         .await?
         .ok_or_else(|| HttpError::not_found(ctx, format!("account '{account_name}' not found")))?;
@@ -108,16 +115,30 @@ pub(crate) async fn link(
     }
 
     // Validate that the provider_id is known to this server.
-    if !state
+    let provider = state
         .federated_providers
         .iter()
-        .any(|p| p.provider_id() == req.provider_id)
-    {
-        return Err(HttpError {
+        .find(|p| p.provider_id() == req.provider_id)
+        .ok_or_else(|| HttpError {
             http: StatusCode::BAD_REQUEST,
             fail_code: ctx.fail_code,
             reason: ApiErrorCode::ValidationFailed,
             message: format!("unknown provider_id '{}' — check server configuration", req.provider_id),
+            details: None,
+        })?;
+
+    // Validate that external_issuer matches the provider's configured issuer so the
+    // link can actually be resolved at auth time (exchange() always returns provider.issuer()).
+    let configured_issuer = provider.issuer();
+    if !configured_issuer.is_empty() && configured_issuer != req.external_issuer {
+        return Err(HttpError {
+            http: StatusCode::BAD_REQUEST,
+            fail_code: ctx.fail_code,
+            reason: ApiErrorCode::ValidationFailed,
+            message: format!(
+                "external_issuer '{}' does not match the configured issuer for provider '{}' (expected '{}')",
+                req.external_issuer, req.provider_id, configured_issuer
+            ),
             details: None,
         });
     }
@@ -174,12 +195,19 @@ pub(crate) async fn link(
 pub(crate) async fn describe(
     State(state): State<AppState>,
     Extension(call_ctx): Extension<CallContext>,
-    Extension(_auth): Extension<AuthUser>,
+    Extension(auth): Extension<AuthUser>,
     Path(account_name): Path<String>,
 ) -> ApiResult<Json<ApiResponse<FederatedIdentityResponse>>> {
     let ctx = ApiErrorCtx {
         fail_code: ApiCode::AccountRetrievalFailed,
     };
+
+    if !state.account_service.is_admin(&call_ctx, auth.user.id).await.ctx(ctx)? {
+        return Err(HttpError::forbidden(
+            ctx,
+            "Admin privilege required to view federated identities",
+        ));
+    }
 
     let account = resolve_account(&state, &call_ctx, ctx, &account_name)
         .await?
@@ -205,12 +233,19 @@ pub(crate) async fn describe(
 pub(crate) async fn unlink(
     State(state): State<AppState>,
     Extension(call_ctx): Extension<CallContext>,
-    Extension(_auth): Extension<AuthUser>,
+    Extension(auth): Extension<AuthUser>,
     Path(account_name): Path<String>,
 ) -> ApiResult<Json<ApiResponse<()>>> {
     let ctx = ApiErrorCtx {
         fail_code: ApiCode::AccountUpdateFailed,
     };
+
+    if !state.account_service.is_admin(&call_ctx, auth.user.id).await.ctx(ctx)? {
+        return Err(HttpError::forbidden(
+            ctx,
+            "Admin privilege required to manage federated identities",
+        ));
+    }
 
     let account = resolve_account(&state, &call_ctx, ctx, &account_name)
         .await?
@@ -242,11 +277,12 @@ pub(crate) async fn unlink(
 mod tests {
     use super::*;
     use crate::audit_context::CallContext;
-    use crate::global::test_utils::create_mock_app_state;
+    use crate::global::test_utils::create_mock_app_state_with_stores;
     use crate::http_server::AppState;
     use crate::http_server::federated_auth_provider::{FederatedAuthProvider, FederatedIdentity};
     use crate::http_server::handlers::auth_response::AuthScope;
     use crate::http_server::middleware::{audit_ctx_middleware, auth_middleware};
+    use crate::manager::account::InMemoryAccountStore;
     use crate::manager::account::Password;
     use crate::service::account::{AccountData, CustomAccountData, CustomServiceAccountData, CustomUserAccountData};
     use axum::Router;
@@ -259,8 +295,8 @@ mod tests {
     use std::sync::Arc;
     use tower::ServiceExt;
 
-    fn create_licensed_app_state() -> AppState {
-        let state = create_mock_app_state();
+    fn create_licensed_app_state() -> (AppState, Arc<InMemoryAccountStore>) {
+        let (state, _, account_store) = create_mock_app_state_with_stores();
         state.license_service.set_effective(EffectiveLicense {
             tier: Tier::Commercial,
             licensee: Some("Test".to_string()),
@@ -271,7 +307,7 @@ mod tests {
             grace_features: vec![],
             grace_period_ends: None,
         });
-        state
+        (state, account_store)
     }
 
     // ---------------------------------------------------------------------------
@@ -330,21 +366,24 @@ mod tests {
             .with_state(state)
     }
 
-    async fn create_admin_token(state: &AppState) -> String {
-        let ctx = CallContext::for_account(state.system_account_id.unwrap());
+    async fn create_admin_token(state: &AppState, account_store: &Arc<InMemoryAccountStore>) -> String {
+        let system_id = state.system_account_id.unwrap();
+        let ctx = CallContext::for_account(system_id);
+        let name = format!("admin-{}", uuid::Uuid::new_v4().simple());
         let data = AccountData {
-            account_name: AccountName::try_from(format!("admin-{}", uuid::Uuid::new_v4().simple())).unwrap(),
+            account_name: AccountName::try_from(name).unwrap(),
             is_active: true,
             description: None,
             labels: Default::default(),
             custom: CustomAccountData::User(CustomUserAccountData {
                 full_name: None,
                 email: None,
-                password: Password::new("password-for-test-12345"),
+                password: Password::new("admin-password-for-test-12345"),
                 must_change_password: false,
             }),
         };
         let admin = state.account_service.create_account(&ctx, &data).await.unwrap();
+        account_store.seed_admin(admin.id);
         let (token, _) = state
             .auth_service
             .create_pat(&ctx, &admin, "test-admin-token", 60, AuthScope::Auth)
@@ -387,7 +426,7 @@ mod tests {
     fn link_body(provider_id: &str) -> String {
         serde_json::json!({
             "provider_id": provider_id,
-            "external_issuer": "https://issuer.example.com",
+            "external_issuer": "https://stub.example.com",
             "external_subject": "test-subject"
         })
         .to_string()
@@ -421,9 +460,9 @@ mod tests {
 
     #[tokio::test]
     async fn link_account_not_found_returns_404() {
-        let mut state = create_licensed_app_state();
+        let (mut state, account_store) = create_licensed_app_state();
         state.federated_providers = vec![Arc::new(StubProvider { id: "oidc".to_string() })];
-        let token = create_admin_token(&state).await;
+        let token = create_admin_token(&state, &account_store).await;
         let app = build_test_router(state);
 
         let status = do_request(
@@ -440,11 +479,11 @@ mod tests {
 
     #[tokio::test]
     async fn link_user_account_returns_bad_request() {
-        let mut state = create_licensed_app_state();
+        let (mut state, account_store) = create_licensed_app_state();
         state.federated_providers = vec![Arc::new(StubProvider { id: "oidc".to_string() })];
         let name = format!("user-{}", uuid::Uuid::new_v4().simple());
         create_user_account(&state, &name).await;
-        let token = create_admin_token(&state).await;
+        let token = create_admin_token(&state, &account_store).await;
         let app = build_test_router(state);
 
         let status = do_request(
@@ -460,12 +499,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn link_unknown_provider_id_returns_bad_request() {
-        let mut state = create_licensed_app_state();
+    async fn link_mismatched_issuer_returns_bad_request() {
+        let (mut state, account_store) = create_licensed_app_state();
         state.federated_providers = vec![Arc::new(StubProvider { id: "oidc".to_string() })];
         let name = format!("svc-{}", uuid::Uuid::new_v4().simple());
         create_service_account(&state, &name).await;
-        let token = create_admin_token(&state).await;
+        let token = create_admin_token(&state, &account_store).await;
+        let app = build_test_router(state);
+
+        let body = serde_json::json!({
+            "provider_id": "oidc",
+            "external_issuer": "https://wrong-issuer.example.com",
+            "external_subject": "test-subject"
+        })
+        .to_string();
+
+        let status = do_request(
+            app,
+            "POST",
+            &format!("/v1/accounts/{name}/federated-identity"),
+            &token,
+            Some(body),
+        )
+        .await;
+
+        assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn link_unknown_provider_id_returns_bad_request() {
+        let (mut state, account_store) = create_licensed_app_state();
+        state.federated_providers = vec![Arc::new(StubProvider { id: "oidc".to_string() })];
+        let name = format!("svc-{}", uuid::Uuid::new_v4().simple());
+        create_service_account(&state, &name).await;
+        let token = create_admin_token(&state, &account_store).await;
         let app = build_test_router(state);
 
         let status = do_request(
@@ -486,8 +553,8 @@ mod tests {
 
     #[tokio::test]
     async fn describe_account_not_found_returns_404() {
-        let state = create_mock_app_state();
-        let token = create_admin_token(&state).await;
+        let (state, _, account_store) = create_mock_app_state_with_stores();
+        let token = create_admin_token(&state, &account_store).await;
         let app = build_test_router(state);
 
         let status = do_request(app, "GET", "/v1/accounts/no-such-account/federated-identity", &token, None).await;
@@ -501,8 +568,8 @@ mod tests {
 
     #[tokio::test]
     async fn unlink_account_not_found_returns_404() {
-        let state = create_mock_app_state();
-        let token = create_admin_token(&state).await;
+        let (state, _, account_store) = create_mock_app_state_with_stores();
+        let token = create_admin_token(&state, &account_store).await;
         let app = build_test_router(state);
 
         let status = do_request(app, "DELETE", "/v1/accounts/no-such-account/federated-identity", &token, None).await;

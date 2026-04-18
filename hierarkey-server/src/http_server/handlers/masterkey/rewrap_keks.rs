@@ -8,6 +8,7 @@ use crate::http_server::auth_user::AuthUser;
 use crate::http_server::extractors::{ApiJson, ApiPath};
 use crate::http_server::handlers::ApiResult;
 use crate::manager::masterkey::MasterKeyStatus;
+use crate::rbac::{Permission, RbacResource};
 use crate::service::audit::{AuditEvent, AuditOutcome, event_type};
 use crate::service::kek::{MasterKeyRetrievable, RewrapKekFilter};
 use axum::extract::State;
@@ -52,6 +53,12 @@ pub(crate) async fn rewrap_keks(
     let ctx = ApiErrorCtx {
         fail_code: ApiCode::MasterKeyRewrapKeksFailed,
     };
+
+    state
+        .rbac_service
+        .require_permission(&call_ctx, Permission::PlatformAdmin, RbacResource::Platform)
+        .await
+        .ctx(ctx)?;
 
     if req.namespace.is_some() && req.kek_id.is_some() {
         return Err(HttpError {

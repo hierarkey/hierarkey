@@ -9,6 +9,7 @@ use crate::http_server::extractors::ApiJson;
 use crate::http_server::handlers::ApiResult;
 use crate::http_server::handlers::masterkey_response::{MasterKeyResponse, MasterKeyStatusResponse};
 use crate::manager::masterkey::{MasterKeyFileType, MasterKeyStatus, MasterKeyUsage};
+use crate::rbac::{Permission, RbacResource};
 use crate::service::audit::{AuditEvent, AuditOutcome, event_type};
 use crate::service::masterkey::provider::UnlockArgs;
 use crate::service::masterkey::{BackendCreate, CreateMasterKeyRequest, MasterKeyProviderType};
@@ -47,6 +48,12 @@ pub(crate) async fn create(
     let ctx = ApiErrorCtx {
         fail_code: ApiCode::MasterKeyCreateFailed,
     };
+
+    state
+        .rbac_service
+        .require_permission(&call_ctx, Permission::PlatformAdmin, RbacResource::Platform)
+        .await
+        .ctx(ctx)?;
 
     let mut metadata = Metadata::default();
     if let Some(ref description) = payload.description {
