@@ -238,11 +238,15 @@ impl RbacService {
         self.rbac_manager.role_delete(ctx, role_id).await
     }
 
-    pub async fn role_get(&self, _ctx: &CallContext, role_id: RoleId) -> CkResult<RoleWithRules> {
+    pub async fn role_get(&self, ctx: &CallContext, role_id: RoleId) -> CkResult<RoleWithRules> {
+        self.require_permission(ctx, Permission::RbacAdmin, rbac_platform_resource())
+            .await?;
         self.rbac_manager.role_get(role_id).await
     }
 
-    pub async fn role_get_by_name(&self, _ctx: &CallContext, role_name: &str) -> CkResult<RoleWithRules> {
+    pub async fn role_get_by_name(&self, ctx: &CallContext, role_name: &str) -> CkResult<RoleWithRules> {
+        self.require_permission(ctx, Permission::RbacAdmin, rbac_platform_resource())
+            .await?;
         self.rbac_manager.role_get_by_name(role_name).await
     }
 
@@ -270,11 +274,15 @@ impl RbacService {
         self.rbac_manager.rule_delete(ctx, rule_id).await
     }
 
-    pub async fn rule_get(&self, _ctx: &CallContext, rule_id: RuleId) -> CkResult<Rule> {
+    pub async fn rule_get(&self, ctx: &CallContext, rule_id: RuleId) -> CkResult<Rule> {
+        self.require_permission(ctx, Permission::RbacAdmin, rbac_platform_resource())
+            .await?;
         self.rbac_manager.rule_get(rule_id).await
     }
 
-    pub async fn rule_search(&self, _ctx: &CallContext) -> CkResult<Vec<RuleListItem>> {
+    pub async fn rule_search(&self, ctx: &CallContext) -> CkResult<Vec<RuleListItem>> {
+        self.require_permission(ctx, Permission::RbacAdmin, rbac_platform_resource())
+            .await?;
         self.rbac_manager.rule_search().await
     }
 
