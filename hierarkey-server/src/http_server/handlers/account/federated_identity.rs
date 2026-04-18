@@ -3,7 +3,7 @@
 
 //! Handlers for managing the federated identity link on a service account.
 //!
-//! Routes (all require an authenticated `Auth`-scoped token):
+//! Routes (all require an authenticated `Auth`-scoped token AND admin privilege):
 //!   POST   /v1/accounts/{account}/federated-identity   link
 //!   GET    /v1/accounts/{account}/federated-identity   describe
 //!   DELETE /v1/accounts/{account}/federated-identity   unlink
@@ -93,6 +93,10 @@ pub(crate) async fn link(
         ));
     }
 
+    if !state.account_service.is_admin(&call_ctx, auth.user.id).await.ctx(ctx)? {
+        return Err(HttpError::forbidden(ctx, "Admin privilege required to manage federated identities"));
+    }
+
     let account = resolve_account(&state, &call_ctx, ctx, &account_name)
         .await?
         .ok_or_else(|| HttpError::not_found(ctx, format!("account '{account_name}' not found")))?;
@@ -174,12 +178,16 @@ pub(crate) async fn link(
 pub(crate) async fn describe(
     State(state): State<AppState>,
     Extension(call_ctx): Extension<CallContext>,
-    Extension(_auth): Extension<AuthUser>,
+    Extension(auth): Extension<AuthUser>,
     Path(account_name): Path<String>,
 ) -> ApiResult<Json<ApiResponse<FederatedIdentityResponse>>> {
     let ctx = ApiErrorCtx {
         fail_code: ApiCode::AccountRetrievalFailed,
     };
+
+    if !state.account_service.is_admin(&call_ctx, auth.user.id).await.ctx(ctx)? {
+        return Err(HttpError::forbidden(ctx, "Admin privilege required to view federated identities"));
+    }
 
     let account = resolve_account(&state, &call_ctx, ctx, &account_name)
         .await?
@@ -205,12 +213,16 @@ pub(crate) async fn describe(
 pub(crate) async fn unlink(
     State(state): State<AppState>,
     Extension(call_ctx): Extension<CallContext>,
-    Extension(_auth): Extension<AuthUser>,
+    Extension(auth): Extension<AuthUser>,
     Path(account_name): Path<String>,
 ) -> ApiResult<Json<ApiResponse<()>>> {
     let ctx = ApiErrorCtx {
         fail_code: ApiCode::AccountUpdateFailed,
     };
+
+    if !state.account_service.is_admin(&call_ctx, auth.user.id).await.ctx(ctx)? {
+        return Err(HttpError::forbidden(ctx, "Admin privilege required to manage federated identities"));
+    }
 
     let account = resolve_account(&state, &call_ctx, ctx, &account_name)
         .await?
