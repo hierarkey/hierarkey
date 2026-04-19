@@ -7,6 +7,7 @@ use crate::http_server::api_error::{ApiErrorCtx, HttpError, WithCtx};
 use crate::http_server::auth_user::AuthUser;
 use crate::http_server::extractors::ApiJson;
 use crate::http_server::handlers::ApiResult;
+use crate::rbac::{Permission, RbacResource};
 use crate::service::audit::ChainVerifyResult;
 use axum::extract::State;
 use axum::{Extension, Json};
@@ -27,7 +28,7 @@ pub struct VerifyRequest {
 pub(crate) async fn verify(
     State(state): State<AppState>,
     _auth: AuthUser,
-    Extension(_call_ctx): Extension<CallContext>,
+    Extension(call_ctx): Extension<CallContext>,
     ApiJson(req): ApiJson<VerifyRequest>,
 ) -> ApiResult<Json<ApiResponse<ChainVerifyResult>>> {
     if !state
@@ -47,6 +48,12 @@ pub(crate) async fn verify(
     let ctx = ApiErrorCtx {
         fail_code: ApiCode::AuditVerifyFailed,
     };
+
+    state
+        .rbac_service
+        .require_permission(&call_ctx, Permission::PlatformAdmin, RbacResource::Platform)
+        .await
+        .ctx(ctx)?;
 
     let result = state
         .audit_service
