@@ -7,6 +7,7 @@ use crate::http_server::api_error::{ApiErrorCtx, HttpError, WithCtx};
 use crate::http_server::auth_user::AuthUser;
 use crate::http_server::extractors::ApiJson;
 use crate::http_server::handlers::ApiResult;
+use crate::rbac::{Permission, RbacResource};
 use crate::service::audit::{AuditFilter, AuditQueryResult};
 use axum::extract::State;
 use axum::{Extension, Json};
@@ -18,7 +19,7 @@ use hierarkey_core::license::Feature;
 pub(crate) async fn events(
     State(state): State<AppState>,
     _auth: AuthUser,
-    Extension(_call_ctx): Extension<CallContext>,
+    Extension(call_ctx): Extension<CallContext>,
     ApiJson(filter): ApiJson<AuditFilter>,
 ) -> ApiResult<Json<ApiResponse<AuditQueryResult>>> {
     if !state
@@ -38,6 +39,12 @@ pub(crate) async fn events(
     let ctx = ApiErrorCtx {
         fail_code: ApiCode::AuditQueryFailed,
     };
+
+    state
+        .rbac_service
+        .require_permission(&call_ctx, Permission::PlatformAdmin, RbacResource::Platform)
+        .await
+        .ctx(ctx)?;
 
     let result = state.audit_service.query(&filter).await.ctx(ctx)?;
 

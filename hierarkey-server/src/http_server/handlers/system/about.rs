@@ -3,9 +3,11 @@
 
 use crate::audit_context::CallContext;
 use crate::http_server::AppState;
+use crate::http_server::api_error::{ApiErrorCtx, WithCtx};
 use crate::http_server::auth_user::AuthUser;
 use crate::http_server::handlers::ApiResult;
 use crate::preview::{preview_enabled, preview_expiry_date};
+use crate::rbac::{Permission, RbacResource};
 use axum::Extension;
 use axum::Json;
 use axum::extract::State;
@@ -172,8 +174,17 @@ pub async fn about_public(State(state): State<AppState>) -> ApiResult<Json<ApiRe
 pub async fn about_admin(
     State(state): State<AppState>,
     _auth: AuthUser,
-    _call_ctx: Extension<CallContext>,
+    Extension(call_ctx): Extension<CallContext>,
 ) -> ApiResult<Json<ApiResponse<AboutAdminDto>>> {
+    let ctx = ApiErrorCtx {
+        fail_code: ApiCode::SystemStatusFailed,
+    };
+    state
+        .rbac_service
+        .require_permission(&call_ctx, Permission::PlatformAdmin, RbacResource::Platform)
+        .await
+        .ctx(ctx)?;
+
     let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let (release_stage, preview_expires_at) = release_stage_and_expiry();
     let effective = state.license_service.get_effective_license();
