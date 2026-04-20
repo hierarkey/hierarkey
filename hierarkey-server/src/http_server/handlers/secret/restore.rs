@@ -16,6 +16,40 @@ use hierarkey_core::api::response::ApiResponse;
 use hierarkey_core::api::status::{ApiCode, ApiErrorCode, ApiStatus};
 use std::str::FromStr;
 
+/// Resolve a secret ID from either a full UUID/ULID string or a ShortId (e.g. `sec_abc12345`).
+/// Searches both active and deleted secrets so that restore operations can find deleted secrets.
+async fn resolve_secret_id_any(state: &AppState, ctx: ApiErrorCtx, input: &str) -> Result<SecretId, HttpError> {
+    if let Ok(id) = SecretId::from_str(input) {
+        return Ok(id);
+    }
+
+    if input.starts_with(SecretId::PREFIX) {
+        let row: Option<(SecretId,)> = sqlx::query_as("SELECT id FROM secrets WHERE short_id = $1 LIMIT 1")
+            .bind(input)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(|e| {
+                HttpError::simple(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    ctx.fail_code,
+                    ApiErrorCode::DbError,
+                    format!("database error: {e}"),
+                )
+            })?;
+        return row
+            .map(|(id,)| id)
+            .ok_or_else(|| HttpError::not_found(ctx, format!("Secret '{input}' not found")));
+    }
+
+    Err(HttpError {
+        http: StatusCode::BAD_REQUEST,
+        fail_code: ctx.fail_code,
+        reason: ApiErrorCode::InvalidRequest,
+        message: format!("Invalid secret ID: '{input}'"),
+        details: None,
+    })
+}
+
 #[axum::debug_handler]
 pub async fn restore(
     State(state): State<AppState>,
@@ -27,13 +61,7 @@ pub async fn restore(
         fail_code: ApiCode::SecretRestoreFailed,
     };
 
-    let secret_id = SecretId::from_str(&sec_id_str).map_err(|_| HttpError {
-        http: StatusCode::BAD_REQUEST,
-        fail_code: ApiCode::SecretRestoreFailed,
-        reason: ApiErrorCode::InvalidRequest,
-        message: format!("Invalid secret ID: '{sec_id_str}'"),
-        details: None,
-    })?;
+    let secret_id = resolve_secret_id_any(&state, ctx, &sec_id_str).await?;
 
     // We need the secret for audit logging; fetch it via find_by_id_any before restoring.
     let secret = state

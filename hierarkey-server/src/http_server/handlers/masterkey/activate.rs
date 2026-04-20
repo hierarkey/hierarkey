@@ -30,7 +30,19 @@ pub(crate) async fn activate(
         .await
         .ctx(ctx)?;
 
-    let master_key = super::resolve_masterkey(&state, &call_ctx, ctx, &name).await?;
+    let master_key = match super::resolve_masterkey(&state, &call_ctx, ctx, &name).await {
+        Ok(k) => k,
+        Err(e) => {
+            state
+                .audit_service
+                .log(
+                    AuditEvent::from_ctx(&call_ctx, event_type::MASTERKEY_ACTIVATE, AuditOutcome::Failure)
+                        .with_resource_ref("masterkey", &name),
+                )
+                .await;
+            return Err(e);
+        }
+    };
 
     let activate_result = state.masterkey_service.activate(&call_ctx, &master_key).await;
     if activate_result.is_err() {

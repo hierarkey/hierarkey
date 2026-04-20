@@ -288,6 +288,10 @@ impl AccountService {
         self.account_manager.find_account_by_cert_fingerprint(fingerprint).await
     }
 
+    pub async fn find_by_short_id(&self, _ctx: &CallContext, short_id: &str) -> CkResult<Option<Account>> {
+        self.account_manager.find_account_by_short_id(short_id).await
+    }
+
     pub async fn set_client_cert(
         &self,
         ctx: &CallContext,
@@ -362,6 +366,17 @@ impl AccountService {
         trace!("Disabling account ID {}", account_id);
 
         let actor_id = ctx.actor.require_account_id()?;
+
+        // Check self-disable before the admin privilege check so non-admin accounts
+        // get the specific "Cannot disable your own account" error rather than
+        // the generic "Admin privilege required" message.
+        if *actor_id == account_id {
+            return Err(hierarkey_core::error::auth::AuthError::Forbidden {
+                reason: "Cannot disable your own account",
+            }
+            .into());
+        }
+
         if !self.account_manager.is_admin(*actor_id).await? {
             return Err(hierarkey_core::error::auth::AuthError::Forbidden {
                 reason: "Admin privilege required to disable accounts",
@@ -382,13 +397,6 @@ impl AccountService {
         if account.account_type == AccountType::System {
             return Err(hierarkey_core::error::validation::ValidationError::InvalidOperation {
                 message: "System accounts cannot be disabled".into(),
-            }
-            .into());
-        }
-
-        if *actor_id == account_id {
-            return Err(hierarkey_core::error::auth::AuthError::Forbidden {
-                reason: "Cannot disable your own account",
             }
             .into());
         }
@@ -420,6 +428,17 @@ impl AccountService {
         trace!("Locking account ID {}", account_id);
 
         let actor_id = ctx.actor.require_account_id()?;
+
+        // Check self-lock before the admin privilege check so non-admin accounts
+        // get the specific "Cannot lock your own account" error rather than
+        // the generic "Admin privilege required" message.
+        if *actor_id == account_id {
+            return Err(hierarkey_core::error::auth::AuthError::Forbidden {
+                reason: "Cannot lock your own account",
+            }
+            .into());
+        }
+
         if !self.account_manager.is_admin(*actor_id).await? {
             return Err(hierarkey_core::error::auth::AuthError::Forbidden {
                 reason: "Admin privilege required to lock accounts",
@@ -440,13 +459,6 @@ impl AccountService {
         if account.account_type == AccountType::System {
             return Err(hierarkey_core::error::validation::ValidationError::InvalidOperation {
                 message: "System accounts cannot be locked".into(),
-            }
-            .into());
-        }
-
-        if *actor_id == account_id {
-            return Err(hierarkey_core::error::auth::AuthError::Forbidden {
-                reason: "Cannot lock your own account",
             }
             .into());
         }

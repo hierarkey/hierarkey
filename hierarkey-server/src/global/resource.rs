@@ -9,6 +9,7 @@ use std::str::FromStr;
 
 /// Generic resource (namespace, account, secret, etc.) status.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
 pub enum ResourceStatus {
     /// Resource is active and available (pending rbac)
     Active,
@@ -142,7 +143,7 @@ mod tests {
     fn test_resource_status_serialization() {
         let status = ResourceStatus::Active;
         let serialized = serde_json::to_string(&status).unwrap();
-        assert_eq!(serialized, "\"Active\"");
+        assert_eq!(serialized, "\"active\"");
 
         let deserialized: ResourceStatus = serde_json::from_str(&serialized).unwrap();
         assert_eq!(deserialized, status);

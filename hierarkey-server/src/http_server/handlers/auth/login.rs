@@ -40,6 +40,7 @@ pub(crate) async fn login(
             .audit_service
             .log(
                 AuditEvent::from_ctx(&call_ctx, event_type::AUTH_LOGIN_FAILURE, AuditOutcome::Failure)
+                    .with_resource_ref("account", req.account_name.to_string())
                     .with_metadata(serde_json::json!({"account_name": req.account_name.to_string()})),
             )
             .await;

@@ -90,7 +90,7 @@ def _generate_test_cert_pem():
 
     key = Ed25519PrivateKey.generate()
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "test")])
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
     cert = (
         x509.CertificateBuilder()
         .subject_name(name)

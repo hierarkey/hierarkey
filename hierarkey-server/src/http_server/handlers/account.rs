@@ -8,9 +8,8 @@ use crate::http_server::api_error::{ApiErrorCtx, HttpError, WithCtx};
 use crate::manager::account::AccountId;
 use hierarkey_core::resources::AccountName;
 
-/// Resolve an account from a path parameter that is either a name or a prefixed ID (`acc_…`).
-/// Callers must make the routing decision: this function calls either `find_by_id` or
-/// `find_by_name` on the service — never a combined fallback.
+/// Resolve an account from a path parameter that is either a name, a full UUID/ULID ID
+/// (`acc_<ulid>`), or a short ID (`acc_<8-12 hex chars>`).
 pub(super) async fn resolve_account(
     state: &AppState,
     call_ctx: &CallContext,
@@ -18,8 +17,17 @@ pub(super) async fn resolve_account(
     name_or_id: &str,
 ) -> Result<Option<Account>, HttpError> {
     if name_or_id.starts_with(AccountId::PREFIX) {
-        let id = AccountId::try_from(name_or_id).ctx(ctx)?;
-        state.account_service.find_by_id(call_ctx, id).await.ctx(ctx)
+        match AccountId::try_from(name_or_id) {
+            Ok(id) => state.account_service.find_by_id(call_ctx, id).await.ctx(ctx),
+            Err(_) => {
+                // Not a UUID/ULID — treat as a ShortId (e.g. acc_1a2b3c4d)
+                state
+                    .account_service
+                    .find_by_short_id(call_ctx, name_or_id)
+                    .await
+                    .ctx(ctx)
+            }
+        }
     } else {
         let name = AccountName::try_from(name_or_id.to_string()).ctx(ctx)?;
         state.account_service.find_by_name(call_ctx, &name).await.ctx(ctx)

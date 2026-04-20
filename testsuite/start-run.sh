@@ -109,9 +109,13 @@ $HKEY_TEST_COMMERCIAL_SERVER_BIN check-migrations  -c hierarkey-config.commercia
 
 # If a CI license is provided (via GitHub Actions secret), write it to disk so
 # we can install it after the commercial server starts.
+# Fall back to the dev test license if no CI license is available.
 if [ -n "$HIERARKEY_CI_LICENSE_JSON" ]; then
     echo "$HIERARKEY_CI_LICENSE_JSON" > data/hierarkey-ci-integration-license.json
     echo "CI license file written."
+elif [ -f data/dev-test-license.json ]; then
+    cp data/dev-test-license.json data/hierarkey-ci-integration-license.json
+    echo "Dev test license file used."
 fi
 
 echo "=== Starting commercial server ==="
@@ -147,7 +151,7 @@ fi
 
 echo "=== Running commercial tests ==="
 cd test-suite
-HKEY_TEST_EE=1 poetry run pytest -q "$@"
+HKEY_TEST_EE=1 HKEY_TEST_MASTERKEY_ROTATION=1 poetry run pytest -q "$@"
 COMMERCIAL_EXIT=$?
 cd "$cur_pwd"
 

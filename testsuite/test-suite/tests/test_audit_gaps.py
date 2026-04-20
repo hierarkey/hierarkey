@@ -174,7 +174,7 @@ class TestAuditEventCoverage:
         assert result.returncode == 0
         pat_id = str(json.loads(result.stdout).get("id", ""))
 
-        result = hkey.run("pat", "revoke", "--id", pat_id)
+        result = hkey.run("pat", "revoke", "--id", pat_id, "--json")
         assert result.returncode == 0, f"pat revoke failed: {result.stderr}"
 
         data = _query_events_ok({"event_type": "pat.revoked"})
@@ -237,7 +237,7 @@ class TestAuditEventCoverage:
         result = hkey.run(
             "rbac", "bind",
             "--name", name,
-            "--rule", f"allow secret:read to namespace {ns}",
+            "--rule", f"allow secret:reveal to namespace {ns}",
         )
         assert result.returncode == 0, f"rbac bind failed: {result.stderr}"
 
@@ -315,19 +315,25 @@ class TestAuditQueryFilters:
 
     def test_filter_by_actor_id(self):
         """9.2.4 — filter actor_id returns only events from that actor."""
-        # Get our own actor ID via whoami
+        # Get our own actor name via whoami, then find the UUID from audit events.
+        # AccountDto.id is a ShortId, not a UUID; audit events store actor_id as UUID.
         r = requests.get(
             f"{server_url()}/v1/auth/whoami",
             headers=_auth_header(),
         )
         assert r.status_code == 200, f"whoami failed: {r.text}"
         whoami = r.json().get("data", r.json())
-        actor_id = (
-            whoami.get("account_id")
-            or whoami.get("id")
-            or (whoami.get("account") or {}).get("id")
-        )
-        assert actor_id, f"Could not extract actor_id from whoami: {whoami}"
+        actor_name = (whoami.get("account") or {}).get("account_name")
+        assert actor_name, f"Could not extract account_name from whoami: {whoami}"
+
+        # Locate our actor_id (UUID) from a recent login event.
+        data = _query_events_ok({"event_type": "auth.login_success", "limit": 500})
+        actor_id = None
+        for event in data["events"]:
+            if event.get("actor_name") == actor_name:
+                actor_id = event.get("actor_id")
+                break
+        assert actor_id, f"Could not find actor_id UUID for '{actor_name}' in login events"
 
         data = _query_events_ok({"actor_id": actor_id, "limit": 10})
         for event in data["events"]:
@@ -536,16 +542,20 @@ class TestAuditAccountEvents:
         )
 
     def test_account_password_change_is_logged(self):
-        """9.1.13 — account.password_change event is logged on admin password reset."""
+        """9.1.13 — account.password_change event is logged when a user changes their own password."""
         name = _unique("audit-pw-chg")
         helpers.create_user_account(name, activate=True)
 
-        result = hkey.run(
-            "account", "change-pw",
+        # Only the user themselves can change their own password; use their own token.
+        token = helpers.login_as(name, "SecurePassword1!")
+
+        result = hkey.run_as(
+            token,
+            "account", "change-password",
             "--name", name,
             "--insecure-new-password", "NewSecurePassword2!",
         )
-        assert result.returncode == 0, f"account change-pw failed: {result.stderr}"
+        assert result.returncode == 0, f"account change-password failed: {result.stderr}"
 
         data = _query_events_ok({"event_type": "account.password_change"})
         resource_names = [e.get("resource_name") for e in data["events"]]
@@ -672,6 +682,7 @@ class TestAuditMasterkeyEvents:
         result = hkey.run(
             "masterkey", "create",
             "--name", name,
+            "--usage", "wrap_kek",
             "--provider", "passphrase",
             "--insecure-passphrase", "AuditTestPassphrase1!",
         )
@@ -690,6 +701,7 @@ class TestAuditMasterkeyEvents:
         hkey.run(
             "masterkey", "create",
             "--name", name,
+            "--usage", "wrap_kek",
             "--provider", "passphrase",
             "--insecure-passphrase", "AuditLockPassphrase1!",
         )
@@ -710,6 +722,7 @@ class TestAuditMasterkeyEvents:
         hkey.run(
             "masterkey", "create",
             "--name", name,
+            "--usage", "wrap_kek",
             "--provider", "passphrase",
             "--insecure-passphrase", passphrase,
         )
@@ -739,6 +752,7 @@ class TestAuditMasterkeyEvents:
         hkey.run(
             "masterkey", "create",
             "--name", name,
+            "--usage", "wrap_kek",
             "--provider", "passphrase",
             "--insecure-passphrase", passphrase,
         )
@@ -817,7 +831,7 @@ class TestAuditRbacEvents:
         hkey.run(
             "rbac", "bind",
             "--name", name,
-            "--rule", f"allow secret:read to namespace {ns}",
+            "--rule", f"allow secret:reveal to namespace {ns}",
         )
 
         # Get the binding to find the rule id
@@ -941,12 +955,13 @@ class TestAuditSaTokenEvents:
             "--type", "service",
             "--name", name,
             "--auth", "passphrase",
-            "--passphrase", passphrase,
+            "--insecure-passphrase", passphrase,
             "--activate",
         )
 
         hkey.run(
-            "auth", "sa-token",
+            "auth", "sa", "token",
+            "--method", "passphrase",
             "--name", name,
             "--passphrase", passphrase,
         )
@@ -966,13 +981,14 @@ class TestAuditSaTokenEvents:
             "--type", "service",
             "--name", name,
             "--auth", "passphrase",
-            "--passphrase", passphrase,
+            "--insecure-passphrase", passphrase,
             "--activate",
         )
 
         # Attempt with wrong passphrase — should fail
         hkey.run(
-            "auth", "sa-token",
+            "auth", "sa", "token",
+            "--method", "passphrase",
             "--name", name,
             "--passphrase", "WrongPassphrase999!",
         )
@@ -1017,7 +1033,7 @@ class TestAuditSaTokenEvents:
                 "alg": "Ed25519",
                 "nonce": nonce,
                 "ts": ts,
-                "sig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                "sig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"[:86],
             }
         }
         requests.post(f"{server_url()}/v1/auth/service-account/token", json=payload)
@@ -1043,18 +1059,25 @@ class TestAuditAccountCreateFailure:
             "account", "create",
             "--type", "user",
             "--name", name,
-            "--password", "SecurePassword1!",
+            "--insecure-password", "SecurePassword1!",
             "--activate",
         )
 
         # Try to create again with the same name — should fail with 409
         r = requests.post(
             f"{server_url()}/v1/accounts",
-            json={"account_type": "user", "name": name, "password": "SecurePassword1!"},
+            json={
+                "account_type": "user",
+                "name": name,
+                "password": "SecurePassword1!",
+                "is_active": True,
+                "must_change_password": False,
+                "labels": {},
+            },
             headers=_auth_header(),
         )
-        assert r.status_code in (409, 422), (
-            f"Expected 409/422 for duplicate account name, got {r.status_code}: {r.text}"
+        assert r.status_code in (400, 409), (
+            f"Expected 400/409 for duplicate account name, got {r.status_code}: {r.text}"
         )
 
         data = _query_events_ok({"event_type": "account.create", "outcome": "failure"})
