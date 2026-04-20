@@ -11,7 +11,7 @@ use crate::utils::tabled::display_opt_date;
 use crate::utils::tabled::display_option;
 use hierarkey_core::{Labels, resources::Revision};
 use hierarkey_server::http_server::handlers::namespace_response::{NamespaceResponse, NamespaceSearchResponse};
-use std::collections::HashMap;
+use serde_json::json;
 use tabled::settings::Style;
 use tabled::{Table, Tabled};
 
@@ -70,21 +70,23 @@ impl From<NamespaceResponse> for NamespaceTableEntry {
 pub fn namespace_list(client: &ApiClient, cli_args: &CliArgs, args: &NamespaceListArgs) -> CliResult<()> {
     let token = cli_args.require_token()?;
 
-    let mut q = HashMap::from([
-        ("q", args.prefix.clone().unwrap_or_default()),
-        ("status", args.effective_statuses().join(",")),
-    ]);
+    let mut body = json!({
+        "status": args.effective_statuses(),
+    });
+    if let Some(prefix) = &args.prefix {
+        body["q"] = json!(prefix);
+    }
     if let Some(limit) = args.limit {
-        q.insert("limit", limit.to_string());
+        body["limit"] = json!(limit);
     }
     if let Some(offset) = args.offset {
-        q.insert("offset", offset.to_string());
+        body["offset"] = json!(offset);
     }
 
     let resp = client
-        .get("/v1/namespaces/search")
+        .post("/v1/namespaces/search")
         .bearer_auth(token)
-        .query(&q)
+        .json(&body)
         .send()?;
     let data = client.handle_response::<NamespaceSearchResponse>(resp)?;
 

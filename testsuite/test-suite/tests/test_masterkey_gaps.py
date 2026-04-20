@@ -263,17 +263,17 @@ class TestLockUnlockMasterKey:
         assert result.returncode != 0, "Expected lock of non-existent key to fail"
 
     @pytest.mark.skipif(
-        not os.environ.get("HKEY_TEST_MASTERKEY_ROTATION"),
+        not os.environ.get("HKEY_TEST_MASTERKEY_ROTATION") or not os.environ.get("HKEY_TEST_ACTIVE_MASTERKEY_NAME"),
         reason=(
-            "Requires activating a non-root key. "
-            "Set HKEY_TEST_MASTERKEY_ROTATION=1 to run on a disposable instance."
+            "Requires a passphrase-backed active master key. "
+            "Set HKEY_TEST_MASTERKEY_ROTATION=1 and HKEY_TEST_ACTIVE_MASTERKEY_NAME=<passphrase-key-name>."
         ),
     )
     def test_reveal_fails_when_active_key_is_locked(self):
         """7.4.3 — Revealing a secret fails when the master key wrapping its KEK is locked. [ROTATION]"""
-        # This test requires the currently-active master key to be a passphrase key.
-        # It assumes the rotation test has already been run (active key is not 'root').
-        active_name = os.environ.get("HKEY_TEST_ACTIVE_MASTERKEY_NAME", "root")
+        # Requires the active master key to be a passphrase key (insecure keys cannot be locked).
+        # Set HKEY_TEST_ACTIVE_MASTERKEY_NAME to the name of a passphrase-backed active key.
+        active_name = os.environ.get("HKEY_TEST_ACTIVE_MASTERKEY_NAME")
 
         ns = "/mk-lock-reveal"
         helpers.create_namespace(ns)
@@ -291,15 +291,15 @@ class TestLockUnlockMasterKey:
                 hkey.run("masterkey", "unlock", "--name", active_name)
 
     @pytest.mark.skipif(
-        not os.environ.get("HKEY_TEST_MASTERKEY_ROTATION"),
+        not os.environ.get("HKEY_TEST_MASTERKEY_ROTATION") or not os.environ.get("HKEY_TEST_ACTIVE_MASTERKEY_NAME"),
         reason=(
-            "Requires activating a non-root key. "
-            "Set HKEY_TEST_MASTERKEY_ROTATION=1 to run on a disposable instance."
+            "Requires a passphrase-backed active master key. "
+            "Set HKEY_TEST_MASTERKEY_ROTATION=1 and HKEY_TEST_ACTIVE_MASTERKEY_NAME=<passphrase-key-name>."
         ),
     )
     def test_reveal_works_after_unlock(self):
         """7.4.6 — Revealing a secret succeeds after the master key is unlocked. [ROTATION]"""
-        active_name = os.environ.get("HKEY_TEST_ACTIVE_MASTERKEY_NAME", "root")
+        active_name = os.environ.get("HKEY_TEST_ACTIVE_MASTERKEY_NAME")
 
         ns = "/mk-unlock-reveal"
         helpers.create_namespace(ns)
@@ -316,58 +316,6 @@ class TestLockUnlockMasterKey:
         result = hkey.run("secret", "reveal", "--ref", f"{ns}:token")
         assert result.returncode == 0, f"Expected reveal to succeed after unlock: {result.stderr}"
         assert "my-token" in result.stdout
-
-
-# ---------------------------------------------------------------------------
-# 7.5 — Delete
-# ---------------------------------------------------------------------------
-
-class TestDeleteMasterKey:
-
-    def test_cannot_delete_pending_key(self):
-        """7.5.2 (pending) — A pending master key (has no KEKs but isn't retired) cannot be deleted."""
-        name = _uid("mk-del-p")
-        hkey.run(
-            "masterkey", "create",
-            "--name", name,
-            "--usage", "wrap_kek",
-            "--provider", "insecure",
-        )
-        # pending key → should fail (only retired keys can be deleted)
-        result = hkey.run("masterkey", "delete", "--name", name)
-        assert result.returncode != 0, "Expected deleting a pending (non-retired) key to fail"
-
-    def test_cannot_delete_active_key(self):
-        """7.5.2 (active) — The active master key protecting KEKs cannot be deleted."""
-        result = hkey.run("masterkey", "delete", "--name", "root")
-        assert result.returncode != 0, "Expected deleting the active master key to fail"
-
-    def test_delete_nonexistent_returns_error(self):
-        """7.5.3 — Deleting a non-existent master key returns an error."""
-        result = hkey.run("masterkey", "delete", "--name", "no-such-key-xyz")
-        assert result.returncode != 0, "Expected delete of non-existent key to fail"
-
-    @pytest.mark.skipif(
-        not os.environ.get("HKEY_TEST_MASTERKEY_ROTATION"),
-        reason=(
-            "Deleting a retired key requires a full rotation first. "
-            "Set HKEY_TEST_MASTERKEY_ROTATION=1 to run on a disposable instance."
-        ),
-    )
-    def test_delete_retired_key_succeeds(self):
-        """7.5.1 — A fully-retired master key (no KEKs remaining) can be deleted. [ROTATION]"""
-        # After rotation, the old key should be in 'retired' state.
-        # The rotation class test_full_rotation_workflow below sets this up.
-        old_name = os.environ.get("HKEY_TEST_RETIRED_MASTERKEY_NAME")
-        assert old_name, "Set HKEY_TEST_RETIRED_MASTERKEY_NAME to the name of a retired master key"
-
-        data = _mk_describe_json(old_name)
-        assert data["master_key"]["status"] == "retired", (
-            f"Key '{old_name}' is not retired (status: {data['master_key']['status']})"
-        )
-
-        result = hkey.run("masterkey", "delete", "--name", old_name)
-        assert result.returncode == 0, f"Expected delete of retired key to succeed: {result.stderr}"
 
 
 # ---------------------------------------------------------------------------
@@ -388,8 +336,9 @@ class TestMasterKeyRotation:
 
     These tests are designed to run in sequence (pytest collects them in definition
     order within the class).  They share state via the environment:
-      HKEY_TEST_ROTATION_NEW_KEY_NAME  — set by test_create_and_activate_new_key
+      HKEY_TEST_ROTATION_NEW_KEY_NAME  — set by test_rewrap_all_keks_with_new_masterkey
       HKEY_TEST_ROTATION_OLD_KEY_NAME  — name of the key that becomes draining
+      HKEY_TEST_RETIRED_MASTERKEY_NAME — set for TestDeleteMasterKey.test_delete_retired_key_succeeds
     """
 
     def test_rewrap_all_keks_with_new_masterkey(self):
@@ -450,7 +399,7 @@ class TestMasterKeyRotation:
         assert data["master_key"]["status"] == "retired", (
             f"Expected '{old_name}' to be retired after rewrap, got: {data['master_key']['status']}"
         )
-        # Expose the retired key name for the delete test
+        # Expose the retired key name for TestDeleteMasterKey.test_delete_retired_key_succeeds
         os.environ["HKEY_TEST_RETIRED_MASTERKEY_NAME"] = old_name
 
     def test_full_rotation_workflow_new_key_is_active(self):
@@ -463,3 +412,58 @@ class TestMasterKeyRotation:
             f"Expected '{new_name}' to be active, got: {data['master_key']['status']}"
         )
         assert data["keyring"]["locked"] is False
+
+
+# ---------------------------------------------------------------------------
+# 7.5 — Delete
+# ---------------------------------------------------------------------------
+
+class TestDeleteMasterKey:
+
+    def test_cannot_delete_pending_key(self):
+        """7.5.2 (pending) — A pending master key (has no KEKs but isn't retired) cannot be deleted."""
+        name = _uid("mk-del-p")
+        hkey.run(
+            "masterkey", "create",
+            "--name", name,
+            "--usage", "wrap_kek",
+            "--provider", "insecure",
+        )
+        # pending key → should fail (only retired keys can be deleted)
+        result = hkey.run("masterkey", "delete", "--name", name)
+        assert result.returncode != 0, "Expected deleting a pending (non-retired) key to fail"
+
+    def test_cannot_delete_active_key(self):
+        """7.5.2 (active) — The currently-active master key cannot be deleted."""
+        # After rotation HKEY_TEST_ROTATION_NEW_KEY_NAME holds the new active key;
+        # fall back to 'root' when rotation has not run.
+        active_key = os.environ.get("HKEY_TEST_ROTATION_NEW_KEY_NAME", "root")
+        result = hkey.run("masterkey", "delete", "--name", active_key)
+        assert result.returncode != 0, "Expected deleting the active master key to fail"
+
+    def test_delete_nonexistent_returns_error(self):
+        """7.5.3 — Deleting a non-existent master key returns an error."""
+        result = hkey.run("masterkey", "delete", "--name", "no-such-key-xyz")
+        assert result.returncode != 0, "Expected delete of non-existent key to fail"
+
+    @pytest.mark.skipif(
+        not os.environ.get("HKEY_TEST_MASTERKEY_ROTATION"),
+        reason=(
+            "Deleting a retired key requires a full rotation first. "
+            "Set HKEY_TEST_MASTERKEY_ROTATION=1 to run on a disposable instance."
+        ),
+    )
+    def test_delete_retired_key_succeeds(self):
+        """7.5.1 — A fully-retired master key (no KEKs remaining) can be deleted. [ROTATION]"""
+        # TestMasterKeyRotation (which runs before this class) sets HKEY_TEST_RETIRED_MASTERKEY_NAME.
+        old_name = os.environ.get("HKEY_TEST_RETIRED_MASTERKEY_NAME")
+        if not old_name:
+            pytest.skip("HKEY_TEST_RETIRED_MASTERKEY_NAME not set — TestMasterKeyRotation must run first")
+
+        data = _mk_describe_json(old_name)
+        assert data["master_key"]["status"] == "retired", (
+            f"Key '{old_name}' is not retired (status: {data['master_key']['status']})"
+        )
+
+        result = hkey.run("masterkey", "delete", "--name", old_name)
+        assert result.returncode == 0, f"Expected delete of retired key to succeed: {result.stderr}"

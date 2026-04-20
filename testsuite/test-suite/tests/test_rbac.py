@@ -41,6 +41,10 @@ def test_rbac_add_new_role():
     assert role_a['role_count'] == 0
 
 def test_rbac_add_rule_to_role():
+    # Create test_role_a here because clear_all_rbac() runs between tests
+    result = hkey.run("rbac", "role", "create", "--name", "test_role_a", "--description", "Test role A")
+    assert result.returncode == 0
+
     result = hkey.run("rbac", "rule", "create", "--rule", "allow secret:reveal to namespace /prod", "--json")
     assert result.returncode == 0
     rule1 = json.loads(result.stdout)['data']

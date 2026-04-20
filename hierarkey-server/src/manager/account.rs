@@ -280,6 +280,7 @@ impl From<&Account> for AccountDto {
 pub trait AccountStore: Send + Sync {
     async fn find_by_id(&self, account_id: AccountId) -> CkResult<Option<Account>>;
     async fn find_by_name(&self, account_name: &AccountName) -> CkResult<Option<Account>>;
+    async fn find_by_short_id(&self, short_id: &str) -> CkResult<Option<Account>>;
 
     // async fn create_system_account(&self, account: &Account) -> CkResult<()>;
     async fn create_account(&self, ctx: &CallContext, account: &Account) -> CkResult<()>;
@@ -401,6 +402,32 @@ impl AccountStore for SqlAccountStore {
         .fetch_optional(&self.pool)
         .await
         .inspect_err(|e| error!("Error in find_by_name: {}", e))?;
+
+        Ok(row)
+    }
+
+    async fn find_by_short_id(&self, short_id: &str) -> CkResult<Option<Account>> {
+        let row = sqlx::query_as::<_, Account>(&one_line_sql(
+            r#"
+        SELECT
+            id, short_id, name, account_type,
+            status, status_reason, locked_until,
+            status_changed_at, status_changed_by,
+            password_hash, mfa_enabled, mfa_secret, mfa_backup_codes,
+            last_login_at, failed_login_attempts, password_changed_at, must_change_password,
+            full_name, email, metadata, passphrase_hash, public_key,
+            client_cert_fingerprint, client_cert_subject,
+            created_at, created_by, updated_at, updated_by, deleted_at, deleted_by,
+            row_hmac
+        FROM accounts
+        WHERE short_id = $1 AND deleted_at IS NULL
+        LIMIT 1
+        "#,
+        ))
+        .bind(short_id)
+        .fetch_optional(&self.pool)
+        .await
+        .inspect_err(|e| error!("Error in find_by_short_id: {}", e))?;
 
         Ok(row)
     }
@@ -1089,6 +1116,14 @@ impl AccountStore for InMemoryAccountStore {
         }
     }
 
+    async fn find_by_short_id(&self, short_id: &str) -> CkResult<Option<Account>> {
+        let accounts = self.accounts.lock();
+        Ok(accounts
+            .values()
+            .find(|a| a.short_id.to_string() == short_id && a.deleted_at.is_none())
+            .cloned())
+    }
+
     async fn create_account(&self, _ctx: &CallContext, account: &Account) -> CkResult<()> {
         let mut accounts = self.accounts.lock();
         let mut name_index = self.account_index.lock();
@@ -1520,6 +1555,14 @@ impl AccountManager {
         let account = self.store.find_by_name(name).await?;
         if let Some(ref a) = account {
             // verify_integrity inserts into cache on success.
+            self.verify_integrity(a).await?;
+        }
+        Ok(account)
+    }
+
+    pub async fn find_account_by_short_id(&self, short_id: &str) -> CkResult<Option<Account>> {
+        let account = self.store.find_by_short_id(short_id).await?;
+        if let Some(ref a) = account {
             self.verify_integrity(a).await?;
         }
         Ok(account)

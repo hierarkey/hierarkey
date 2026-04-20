@@ -897,13 +897,13 @@ mod tests {
 
     #[test]
     fn namespace_search_query_status_single_value() {
-        let q = parse_query(r#"{"status":["Active"]}"#);
+        let q = parse_query(r#"{"status":["active"]}"#);
         assert_eq!(q.status, vec![ResourceStatus::Active]);
     }
 
     #[test]
     fn namespace_search_query_status_multiple_values() {
-        let q = parse_query(r#"{"status":["Active","Disabled","Deleted"]}"#);
+        let q = parse_query(r#"{"status":["active","disabled","deleted"]}"#);
         assert_eq!(
             q.status,
             vec![

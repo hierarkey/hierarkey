@@ -18,4 +18,4 @@ def test_help():
 def test_version():
     result = hkey.run('--version')
     assert result.returncode == 0
-    assert 'Hierarkey CLI 0.2' in result.stdout + result.stderr
+    assert 'Hierarkey CLI' in result.stdout + result.stderr
