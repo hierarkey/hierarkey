@@ -46,7 +46,7 @@ jobs:
           fi
           cat release_notes.md
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
@@ -164,7 +164,7 @@ jobs:
 
           ls -lah "$OUTDIR"
       - name: Upload tar.gz + checksum + signature to GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           files: |
