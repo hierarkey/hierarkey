@@ -14,11 +14,11 @@ Fixes # (issue)
 
 ## Checklist
 
-- [ ] I have read [CONTRIBUTING.md](../CONTRIBUTING.md)
+- [ ] I have read [CONTRIBUTING.md](https://github.com/hierarkey/hierarkey/blob/main/CONTRIBUTING.md)
 - [ ] My changes include tests that cover the new behaviour
 - [ ] All existing tests pass (`cargo test`)
 - [ ] I have updated documentation where relevant
-- [ ] I have signed the [CLA](../CLA.md) (first-time contributors only)
+- [ ] I have signed the [CLA](https://github.com/hierarkey/hierarkey/blob/main/CLA.md) (first-time contributors only)
 
 ## Testing
 
