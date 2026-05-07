@@ -95,7 +95,7 @@ jobs:
 
       - name: Install hkey CLI
         run: |
-          curl -L -o hkey https://releases.example.com/hkey-linux-amd64
+          curl -L -o hkey https://github.com/hierarkey/hierarkey/releases/latest/download/hkey-linux-amd64
           chmod +x hkey
           sudo mv hkey /usr/local/bin/
 
