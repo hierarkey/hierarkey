@@ -44,7 +44,7 @@ blake3 = "1.8.5"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.6.1", features = ["derive"] }
 config = {  version = "0.15.22", default-features = false, features = ["toml"] }
-ed25519-dalek = { version = "3.0.0-pre.6", features = ["pkcs8", "pem", "rand_core"] }
+ed25519-dalek = { version = "3.0.0-pre.7", features = ["pkcs8", "pem", "rand_core"] }
 hex = "0.4.3"
 hierarkey_core = { path = "../hierarkey-core" }
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
