@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hierarkey — Hierarchical secret management</title>
+  <meta name="description" content="Hierarkey is a secure, hierarchical secret management platform with layered encryption, fine-grained RBAC, key rotation, and auditability." />
+  <meta property="og:title" content="Hierarkey — Hierarchical secret management" />
+  <meta property="og:description" content="Store, rotate, and control access to secrets with layered encryption and namespace-aware RBAC." />
+  <meta property="og:type" content="website" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="page-glow" aria-hidden="true"></div>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="Hierarkey home">
+      <span class="brand-mark">H</span>
+      <span>Hierarkey</span>
+    </a>
+    <nav aria-label="Primary navigation">
+      <a href="#security">Security</a>
+      <a href="#workflow">Workflow</a>
+      <a href="#editions">Editions</a>
+      <a href="https://github.com/hierarkey/hierarkey">GitHub</a>
+    </nav>
+    <a class="header-cta" href="#quickstart">Quick start</a>
+  </header>
+
+  <main id="top">
+    <section class="hero section-pad">
+      <div class="hero-copy">
+        <p class="eyebrow">Open-source secret management for teams that care about blast radius</p>
+        <h1>Secrets, organized by hierarchy. Protected layer by layer.</h1>
+        <p class="lede">Hierarkey stores API keys, certificates, and credentials in namespace-aware vaults with AES-256-GCM encryption, fine-grained RBAC, rotation history, and a complete audit path.</p>
+        <div class="hero-actions">
+          <a class="button primary" href="#quickstart">Get started</a>
+          <a class="button secondary" href="https://github.com/hierarkey/hierarkey">View on GitHub</a>
+        </div>
+        <div class="trust-row" aria-label="Project highlights">
+          <span>AGPL core</span>
+          <span>Rust server</span>
+          <span>HTTP API + CLI</span>
+          <span>PostgreSQL</span>
+        </div>
+      </div>
+
+      <div class="terminal-card" aria-label="Hierarkey CLI example">
+        <div class="terminal-top"><span></span><span></span><span></span></div>
+        <pre><code>$ hkey secret reveal --ref /prod/payments:db/password
+postgres://payments:••••••@db:5432/app
+
+$ hkey secret reveal --ref /prod/payments:api-key --as-base64
+c2tfbGl2ZV9DaG9vc2VBQmV0dGVyU2VjcmV0
+
+$ hkey rbac explain \
+  --account svc-payments \
+  --permission secret:reveal \
+  --secret /prod/payments:db/password
+
+allow secret:reveal via role prod-reader</code></pre>
+      </div>
+    </section>
+
+    <section class="logo-strip" aria-label="Feature summary">
+      <span>Master Key → KEK → DEK → Secret</span>
+      <span>Default deny RBAC</span>
+      <span>Revisioned secrets</span>
+      <span>HSM-ready commercial tier</span>
+    </section>
+
+    <section id="security" class="section-pad split">
+      <div>
+        <p class="eyebrow">Security model</p>
+        <h2>A database leak should not become a secret leak.</h2>
+        <p>Hierarkey encrypts each secret revision with its own data encryption key, wraps those keys per namespace, and keeps the root of trust outside the database.</p>
+      </div>
+      <div class="stack-card">
+        <div class="layer root">Master Key <small>root of trust</small></div>
+        <div class="connector"></div>
+        <div class="layer">Namespace KEK <small>limits namespace blast radius</small></div>
+        <div class="connector"></div>
+        <div class="layer">Revision DEK <small>unique per secret version</small></div>
+        <div class="connector"></div>
+        <div class="layer secret">Encrypted secret <small>AES-256-GCM</small></div>
+      </div>
+    </section>
+
+    <section class="cards section-pad compact">
+      <article>
+        <span class="icon">◇</span>
+        <h3>Hierarchical namespaces</h3>
+        <p>Model environments, teams, tenants, or apps as paths like <code>/org/prod/team-alpha</code>.</p>
+      </article>
+      <article>
+        <span class="icon">⌁</span>
+        <h3>Precise RBAC</h3>
+        <p>Roles, rules, bindings, wildcard matching, default deny, and deny-overrides-allow semantics.</p>
+      </article>
+      <article>
+        <span class="icon">↻</span>
+        <h3>Safe rotation</h3>
+        <p>Rewrap master keys, rotate namespace KEKs, and revise secrets without breaking consumers.</p>
+      </article>
+      <article>
+        <span class="icon">✓</span>
+        <h3>Audit trail</h3>
+        <p>Track actor, timestamp, operation, and outcome across the platform. Tamper-evident audit is commercial.</p>
+      </article>
+    </section>
+
+    <section id="workflow" class="section-pad workflow">
+      <div class="section-heading">
+        <p class="eyebrow">Workflow</p>
+        <h2>Ship secrets like infrastructure, not tribal knowledge.</h2>
+      </div>
+      <div class="timeline">
+        <div><strong>1</strong><h3>Create namespaces</h3><p>Split production, staging, teams, and apps into clear security boundaries.</p></div>
+        <div><strong>2</strong><h3>Bind access</h3><p>Grant only the actions each account needs, scoped by namespace or secret path.</p></div>
+        <div><strong>3</strong><h3>Store revisions</h3><p>Add new secret versions, stage them, activate them, or roll back when needed.</p></div>
+        <div><strong>4</strong><h3>Rotate keys</h3><p>Reduce blast radius with KEK and master-key rotation without rewriting application code.</p></div>
+      </div>
+    </section>
+
+    <section id="quickstart" class="section-pad quickstart quickstart-lite">
+      <div>
+        <p class="eyebrow">Quick start</p>
+        <h2>Evaluate the core without reading a manual first.</h2>
+        <p>Clone the project, build the CLI/server, then follow the guided bootstrap when you are ready to run a local instance.</p>
+        <div class="hero-actions">
+          <a class="button primary" href="https://github.com/hierarkey/hierarkey">Clone on GitHub</a>
+          <a class="button secondary" href="https://docs.hierarkey.com">Read the setup guide</a>
+        </div>
+      </div>
+      <div class="command-steps" aria-label="Quick start commands">
+        <div><span>1</span><code>git clone https://github.com/hierarkey/hierarkey.git</code></div>
+        <div><span>2</span><code>cd hierarkey && cargo build --release</code></div>
+        <div><span>3</span><code>./target/release/hierarkey generate-config</code></div>
+      </div>
+    </section>
+
+    <section id="editions" class="section-pad editions">
+      <div class="section-heading">
+        <p class="eyebrow">Editions</p>
+        <h2>Open core with a commercial path.</h2>
+      </div>
+      <div class="pricing-grid">
+        <article>
+          <h3>Community</h3>
+          <p class="price">AGPL-3.0</p>
+          <ul>
+            <li>Layered encryption at rest</li>
+            <li>Namespaces, labels, and revisions</li>
+            <li>Fine-grained RBAC</li>
+            <li>HTTP API and hkey CLI</li>
+            <li>Personal access tokens</li>
+          </ul>
+        </article>
+        <article class="featured">
+          <h3>Commercial</h3>
+          <p class="price">For production teams</p>
+          <ul>
+            <li>MFA with TOTP and backup codes</li>
+            <li>OIDC and Kubernetes workload auth</li>
+            <li>mTLS service authentication</li>
+            <li>PKCS#11 HSM support</li>
+            <li>Prometheus metrics + audit export</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="final-cta section-pad">
+      <p class="eyebrow">Ready to reduce secret sprawl?</p>
+      <h2>Start with the open-source core. Add commercial controls when your deployment needs them.</h2>
+      <div class="hero-actions">
+        <a class="button primary" href="https://github.com/hierarkey/hierarkey">Star / clone on GitHub</a>
+        <a class="button secondary" href="mailto:info@hierarkey.com">Contact commercial support</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>© Hierarkey</span>
+    <a href="https://github.com/hierarkey/hierarkey">GitHub</a>
+    <a href="https://docs.hierarkey.com">Docs</a>
+    <a href="mailto:info@hierarkey.com">info@hierarkey.com</a>
+  </footer>
+</body>
+</html>
